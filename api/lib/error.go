@@ -5,7 +5,8 @@ type CustomError interface {
 }
 
 type ServerError struct {
-	Msg string
+	Msg  string
+	Code int
 }
 
 func (serverError ServerError) Error() string {
