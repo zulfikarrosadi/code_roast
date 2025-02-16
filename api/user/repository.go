@@ -16,6 +16,13 @@ type RepositoryImpl struct {
 	*sql.DB
 }
 
+func NewUserRepository(logger *slog.Logger, db *sql.DB) *RepositoryImpl {
+	return &RepositoryImpl{
+		Logger: logger,
+		DB:     db,
+	}
+}
+
 const (
 	DUPLICATE_CONSTRAINT_ERROR = 1062
 )
