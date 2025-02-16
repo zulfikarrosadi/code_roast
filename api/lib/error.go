@@ -4,11 +4,11 @@ type CustomError interface {
 	Error() string
 }
 
-type ServerError struct {
+type AuthError struct {
 	Msg  string
 	Code int
 }
 
-func (serverError ServerError) Error() string {
-	return serverError.Msg
+func (authError AuthError) Error() string {
+	return authError.Msg
 }
