@@ -16,6 +16,36 @@ type RepositoryImpl struct {
 	*sql.DB
 }
 
+const (
+	DUPLICATE_CONSTRAINT_ERROR = 1062
+)
+
+func (repo *RepositoryImpl) FindUserByEmail(ctx context.Context, email string) (User, error) {
+	user := new(User)
+	err := repo.DB.QueryRowContext(ctx, "SELECT id, fullname, password, email FROM users WHERE email = ?", email).Scan(&user.Id, &user.Fullname, &user.Password, &user.Email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			repo.Logger.LogAttrs(ctx,
+				slog.LevelError,
+				"REQUEST_ERROR",
+				slog.Group("details",
+					slog.String("message", "email not found"),
+					slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
+				))
+			return *user, lib.AuthError{Msg: "email or password is invalid", Code: http.StatusBadRequest}
+		}
+		repo.Logger.LogAttrs(ctx,
+			slog.LevelError,
+			"REQUEST_ERROR",
+			slog.Group("details",
+				slog.String("message", err.Error()),
+				slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
+			))
+		return *user, errors.New("something went wrong, please try again later")
+	}
+	return *user, nil
+}
+
 func (repository *RepositoryImpl) Create(ctx context.Context, user User) (User, error) {
 	result, err := repository.DB.ExecContext(
 		ctx,
