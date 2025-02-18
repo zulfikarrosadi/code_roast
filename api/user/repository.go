@@ -8,8 +8,16 @@ import (
 	"net/http"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/zulfikarrosadi/code_roast/lib"
 )
+
+type authError struct {
+	Msg  string
+	Code int
+}
+
+func (authError authError) Error() string {
+	return authError.Msg
+}
 
 type RepositoryImpl struct {
 	*slog.Logger
@@ -53,28 +61,78 @@ func (repo *RepositoryImpl) FindUserByEmail(ctx context.Context, email string) (
 	return *user, nil
 }
 
-func (repository *RepositoryImpl) Create(ctx context.Context, user User) (User, error) {
-	result, err := repository.DB.ExecContext(
+func (repository *RepositoryImpl) register(ctx context.Context, user userCreateRequest) (User, error) {
+	tx, err := repository.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		repository.Logger.LogAttrs(ctx,
+			slog.LevelError,
+			"REQUEST_ERROR",
+			slog.Group("details",
+				slog.String("message", err.Error()),
+				slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
+			))
+		return User{}, errors.New("something went wrong, please try again later")
+	}
+	defer func() {
+		// handle panic in extreamely rare case condition e.g driver fails
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.ExecContext(
 		ctx,
 		"INSERT INTO users (id, fullname, email, password, created_at) VALUES (?,?,?,?,?)",
-		user.Id, user.Fullname, user.Email, user.Password, user.CreatedAt,
+		user.Id,
+		user.Fullname,
+		user.Email,
+		user.Password,
+		user.CreatedAt,
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == DUPLICATE_CONSTRAINT_ERROR {
 			repository.Logger.LogAttrs(ctx, slog.LevelError, "duplicate email", slog.Any("details", err))
-			return user, lib.AuthError{
+			return User{}, authError{
 				Msg:  "this email is already registered, try login instead",
 				Code: http.StatusBadRequest,
 			}
 		}
 		repository.Logger.LogAttrs(ctx, slog.LevelError, "fail insert new user", slog.Any("details", err))
-		return user, errors.New("something went wrong, please try again later")
-	}
-	if rowsAffected, err := result.RowsAffected(); err != nil || rowsAffected == 0 {
-		repository.Logger.LogAttrs(ctx, slog.LevelError, "fail get rows affected", slog.Any("details", err))
 		return User{}, errors.New("something went wrong, please try again later")
 	}
-
-	return user, nil
+	_, err = tx.ExecContext(
+		ctx,
+		"INSERT INTO authentication (id, refresh_token, last_login, remote_ip, agent, user_id) VALUES(?,?,?,?,?,?)",
+		user.Authentication.Id,
+		user.Authentication.RefreshToken,
+		user.Authentication.LastLogin,
+		user.Authentication.RemoteIP,
+		user.Authentication.Agent, user.Id,
+	)
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == DUPLICATE_CONSTRAINT_ERROR {
+			repository.Logger.LogAttrs(ctx, slog.LevelError, "duplicate refresh token found: possibly stolen", slog.Any("details", err))
+			return User{}, authError{
+				Msg:  "fail to process your request, please insert corrrect information and try again",
+				Code: http.StatusBadRequest,
+			}
+		}
+		repository.Logger.LogAttrs(ctx, slog.LevelError, err.Error(), slog.Any("details", err))
+		return User{}, errors.New("something went wrong, please try again later")
+	}
+	err = tx.Commit()
+	if err != nil {
+		repository.Logger.LogAttrs(ctx, slog.LevelError, "transaction commit error", slog.Any("details", err))
+		return User{}, errors.New("something went wrong, please try again later")
+	}
+	return User{
+		Id:       user.Id,
+		Fullname: user.Fullname,
+		Email:    user.Email,
+	}, nil
 }
