@@ -11,13 +11,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/zulfikarrosadi/code_roast/lib"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Repository interface {
-	Create(context.Context, User) (User, error)
-	FindUserByEmail(context.Context, string) (User, error)
+	register(context.Context, userCreateRequest) (User, error)
+	findByEmail(context.Context, string) (User, error)
 }
 
 type ServiceImpl struct {
@@ -55,6 +54,15 @@ type CustomJWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+type newUser struct {
+	id       string
+	fullname string
+	email    string
+	password string
+	agent    string
+	remoteIp string
+}
+
 func (service *ServiceImpl) Login(
 	ctx context.Context,
 	user userLoginRequest,
@@ -76,7 +84,7 @@ func (service *ServiceImpl) Login(
 			},
 		}
 	}
-	result, err := service.Repository.FindUserByEmail(ctx, user.Email)
+	result, err := service.Repository.findByEmail(ctx, user.Email)
 	if err != nil {
 		service.Logger.LogAttrs(ctx,
 			slog.LevelError,
@@ -85,7 +93,7 @@ func (service *ServiceImpl) Login(
 				slog.String("message", err.Error()),
 				slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
 			))
-		var authError lib.AuthError
+		var authError authError
 		if errors.As(err, &authError) {
 			return nil, &ErrorResponse{
 				Status: "fail",
@@ -163,7 +171,7 @@ func (service *ServiceImpl) Login(
 
 func (service *ServiceImpl) Create(
 	ctx context.Context,
-	newUser userCreateRequest,
+	newUser newUser,
 ) (*SuccessResponse[authResponse], *ErrorResponse) {
 	newUserId, err := uuid.NewV7()
 	if err != nil {
@@ -181,7 +189,6 @@ func (service *ServiceImpl) Create(
 			},
 		}
 	}
-
 	refreshToken, err := uuid.NewV7()
 	if err != nil {
 		service.Logger.LogAttrs(
@@ -198,7 +205,22 @@ func (service *ServiceImpl) Create(
 			},
 		}
 	}
-
+	authenticationId, err := uuid.NewV7()
+	if err != nil {
+		service.Logger.LogAttrs(
+			ctx,
+			slog.LevelError,
+			"fail to generate authentication id",
+			slog.Any("details", err),
+		)
+		return nil, &ErrorResponse{
+			Status: "fail",
+			Error: Error{
+				Code:    http.StatusInternalServerError,
+				Message: "fail to create your account, please try again later",
+			},
+		}
+	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), 10)
 	if err != nil {
 		service.Logger.LogAttrs(ctx,
@@ -217,12 +239,20 @@ func (service *ServiceImpl) Create(
 		}
 	}
 
-	user, err := service.Repository.Create(ctx, User{
+	user, err := service.Repository.register(ctx, userCreateRequest{
 		Id:        newUserId.String(),
 		Fullname:  newUser.Fullname,
 		Email:     newUser.Email,
 		Password:  string(hashedPassword),
 		CreatedAt: time.Now().Unix(),
+		Authentication: Authentication{
+			Id:           authenticationId.String(),
+			RefreshToken: refreshToken.String(),
+			LastLogin:    time.Now().Unix(),
+			UserId:       newUserId.String(),
+			Agent:        newUser.Authentication.Agent,
+			RemoteIP:     newUser.Authentication.Agent,
+		},
 	})
 	if err != nil {
 		fmt.Println(ctx)
@@ -232,7 +262,7 @@ func (service *ServiceImpl) Create(
 			"repo error in service",
 			slog.Any("details", err),
 		)
-		var authError lib.AuthError
+		var authError authError
 		if errors.As(err, &authError) {
 			return nil, &ErrorResponse{
 				Status: "fail",
