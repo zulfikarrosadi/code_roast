@@ -9,7 +9,7 @@ import (
 )
 
 type Service interface {
-	Create(context.Context, userCreateRequest) (*SuccessResponse[authResponse], *ErrorResponse)
+	Create(context.Context, newUser) (*SuccessResponse[authResponse], *ErrorResponse)
 	Login(context.Context, userLoginRequest) (*SuccessResponse[authResponse], *ErrorResponse)
 }
 
@@ -75,10 +75,10 @@ func (api *ApiHandler) Login(c echo.Context) error {
 }
 
 func (api *ApiHandler) Register(c echo.Context) error {
-	newUser := new(userCreateRequest)
+	user := new(User)
 	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
 
-	if err := c.Bind(newUser); err != nil {
+	if err := c.Bind(user); err != nil {
 		api.Logger.LogAttrs(
 			c.Request().Context(),
 			slog.LevelError,
@@ -90,7 +90,14 @@ func (api *ApiHandler) Register(c echo.Context) error {
 			"fail to process your request, send corerct data and try again",
 		)
 	}
-	successRes, errorRes := api.Service.Create(ctx, *newUser)
+	successRes, errorRes := api.Service.Create(ctx, newUser{
+		id:       user.Id,
+		fullname: user.Fullname,
+		email:    user.Email,
+		password: user.Password,
+		agent:    c.Request().UserAgent(),
+		remoteIp: c.Request().RemoteAddr,
+	})
 	if errorRes != nil {
 		return echo.NewHTTPError(errorRes.Error.Code, errorRes.Error.Message)
 	}
