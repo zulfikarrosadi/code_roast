@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime/debug"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
@@ -19,12 +20,12 @@ import (
 )
 
 type Error struct {
-	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
 type ErrorResponse struct {
 	Status string `json:"status"`
+	Code   int    `json:"code"`
 	Error  Error  `json:"error"`
 }
 
@@ -41,6 +42,7 @@ func main() {
 	}
 
 	e.Use(middleware.RequestID())
+
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:    true,
 		LogRequestID: true,
@@ -48,30 +50,45 @@ func main() {
 		LogLatency:   true,
 		LogURIPath:   true,
 		LogUserAgent: true,
+		LogHeaders:   []string{"Authorization"},
 		LogRemoteIP:  true,
 		LogError:     true,
 		HandleError:  true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			requestDetails := slog.Group("request",
+				slog.String("id", v.RequestID),
+				slog.String("method", v.Method),
+				slog.String("path", v.URIPath),
+				slog.String("user_agent", v.UserAgent),
+				slog.String("ip", v.RemoteIP),
+				slog.Any("authorization", v.Headers),
+			)
+
 			if v.Error != nil {
-				logger.LogAttrs(c.Request().Context(), slog.LevelInfo, "REQUEST_ERROR",
-					slog.Int("status", v.Status),
-					slog.String("path", v.URIPath),
-					slog.String("id", v.RequestID),
-					slog.String("method", v.Method),
-					slog.Int("latency", int(v.Latency)),
-					slog.String("agent", v.UserAgent),
-					slog.String("ip", v.RemoteIP),
-					slog.String("error", v.Error.Error()),
-				)
+				// Differentiate user-caused errors (4xx) and server errors (5xx)
+				var echoErrorRequest *echo.HTTPError
+				if errors.As(v.Error, &echoErrorRequest) && v.Status >= 400 && v.Status < 500 {
+					logger.LogAttrs(c.Request().Context(), slog.LevelWarn, "REQUEST_ERROR",
+						slog.Int("status", v.Status),
+						slog.Int("latency_ms", int(v.Latency)),
+						requestDetails,
+						slog.String("error", echoErrorRequest.Message.(string)),
+					)
+				} else {
+					logger.LogAttrs(c.Request().Context(), slog.LevelError, "REQUEST_ERROR",
+						slog.Int("status", v.Status),
+						slog.Int("latency_ms", int(v.Latency)),
+						requestDetails,
+						slog.String("error", v.Error.Error()),
+						slog.String("stack_trace", string(debug.Stack())), // Include stack trace for system errors
+					)
+				}
 			} else {
-				logger.LogAttrs(c.Request().Context(), slog.LevelError, "REQUEST",
+				// Log successful requests as INFO
+				logger.LogAttrs(c.Request().Context(), slog.LevelInfo, "REQUEST",
 					slog.Int("status", v.Status),
-					slog.String("path", v.URIPath),
-					slog.String("id", v.RequestID),
-					slog.String("method", v.Method),
-					slog.Int("latency", int(v.Latency)),
-					slog.String("agent", v.UserAgent),
-					slog.String("ip", v.RemoteIP),
+					slog.Int("latency_ms", int(v.Latency)),
+					requestDetails,
 				)
 			}
 			return nil
@@ -91,59 +108,12 @@ func main() {
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
 			return &user.CustomJWTClaims{}
 		},
-		SuccessHandler: func(c echo.Context) {
-			token := c.Get("user").(*jwt.Token)
-			claims, ok := token.Claims.(*user.CustomJWTClaims)
-			if !ok {
-				// Log the error and skip further processing
-				slog.LogAttrs(c.Request().Context(),
-					slog.LevelError,
-					"REQUEST_ERROR",
-					slog.Group("details",
-						slog.String("message", "Failed to assert claims"),
-						slog.String("request_id", c.Response().Header().Get(echo.HeaderXRequestID)),
-					))
-				return
-			}
-
-			slog.LogAttrs(c.Request().Context(),
-				slog.LevelInfo,
-				"INFO",
-				slog.Group("details",
-					slog.String("message", "access token successfully verified"),
-					slog.String("request_id", c.Response().Header().Get(echo.HeaderXRequestID)),
-					slog.String("user_id", claims.Id),
-				))
-		},
 		ErrorHandler: func(c echo.Context, err error) error {
 			if errors.Is(err, jwt.ErrTokenExpired) {
-				slog.LogAttrs(c.Request().Context(),
-					slog.LevelError,
-					"REQUEST_ERROR",
-					slog.Group("details",
-						slog.String("message", "Access token expired"),
-						slog.String("request_id", c.Response().Header().Get(echo.HeaderXRequestID)),
-					))
 				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
 			} else if errors.Is(err, jwt.ErrTokenMalformed) {
-				slog.LogAttrs(c.Request().Context(),
-					slog.LevelError,
-					"REQUEST_ERROR",
-					slog.Group("details",
-						slog.String("message", "Malformed access token"),
-						slog.String("request_id", c.Response().Header().Get(echo.HeaderXRequestID)),
-					))
 				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
 			}
-			authHeader := c.Request().Header.Get("Authorization")
-			slog.LogAttrs(c.Request().Context(),
-				slog.LevelError,
-				"REQUEST_ERROR",
-				slog.Group("details",
-					slog.String("message", err.Error()),
-					slog.String("request_id", c.Response().Header().Get(echo.HeaderXRequestID)),
-					slog.String("authorization_header", authHeader),
-				))
 			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
 		},
 	}))
@@ -155,27 +125,27 @@ func main() {
 		var errResponse ErrorResponse
 
 		if ok {
-			code := report.Code
-			message := report.Message
-
+			// Client error (4xx) or known server errors (5xx)
 			errResponse = ErrorResponse{
 				Status: "fail",
+				Code:   report.Code,
 				Error: Error{
-					Code:    code,
-					Message: message.(string), // Type assertion since report.Message is interface{}
+					// need type asserition because it's interface{}
+					Message: report.Message.(string),
 				},
 			}
 		} else {
 			errResponse = ErrorResponse{
 				Status: "fail",
+				Code:   http.StatusInternalServerError,
 				Error: Error{
-					Code:    http.StatusInternalServerError,
 					Message: "something went wrong, please try again later",
 				},
 			}
 		}
-		if err := c.JSON(errResponse.Error.Code, errResponse); err != nil {
-			c.Logger().Error("Error sending error response:", err)
+
+		if err := c.JSON(errResponse.Code, errResponse); err != nil {
+			c.Logger().Error("FAILED_TO_SEND_ERROR_RESPONSE", slog.Any("error", err))
 		}
 	}
 
