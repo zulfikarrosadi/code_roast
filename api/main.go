@@ -8,14 +8,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"runtime/debug"
 
+	"github.com/cloudinary/cloudinary-go/v2"
+	"github.com/go-playground/validator/v10"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/zulfikarrosadi/code_roast/subforum"
 	"github.com/zulfikarrosadi/code_roast/user"
 )
 
@@ -29,13 +31,21 @@ type ErrorResponse struct {
 	Error  Error  `json:"error"`
 }
 
+const (
+	CLOUDINARY_API_KEY    = "CLOUDINARY_API_KEY"
+	CLOUDINARY_API_SECRET = "CLOUDINARY_API_SECRET"
+	CLOUDINARY_CLOUD_NAME = "dxz9dwknn"
+)
+
 func main() {
 	e := echo.New()
 	err := godotenv.Load()
 	if err != nil {
 		panic("env not loaded")
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 	db := OpenDBConnection(logger)
 	if db == nil {
 		panic("db connection fail to open")
@@ -80,7 +90,6 @@ func main() {
 						slog.Int("latency_ms", int(v.Latency)),
 						requestDetails,
 						slog.String("error", v.Error.Error()),
-						slog.String("stack_trace", string(debug.Stack())), // Include stack trace for system errors
 					)
 				}
 			} else {
@@ -149,13 +158,26 @@ func main() {
 		}
 	}
 
+	cld, err := cloudinary.NewFromParams(
+		CLOUDINARY_CLOUD_NAME,
+		os.Getenv(CLOUDINARY_API_KEY),
+		os.Getenv(CLOUDINARY_API_SECRET),
+	)
+	if err != nil {
+		panic("cloudnary fail to initiate")
+	}
 	userRepository := user.NewUserRepository(logger, db)
 	userService := user.NewUserService(logger, userRepository)
 	userApi := user.NewApiHandler(logger, userService)
 
+	subforumRepository := subforum.NewRepository(db)
+	subforumService := subforum.NewService(subforumRepository, validator.New())
+	subforumApi := subforum.NewApi(subforumService, cld, logger)
+
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
+	r.POST("/subforums", subforumApi.Create)
 	r.GET("/", func(c echo.Context) error {
 		token := c.Get("user").(*jwt.Token)
 
