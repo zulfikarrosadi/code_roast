@@ -16,16 +16,26 @@ type subforum struct {
 	description string
 	userId      string
 	createdAt   int64
+	icon        string
+	banner      string
+}
+
+func NewRepository(db *sql.DB) *RepositoryImpl {
+	return &RepositoryImpl{
+		DB: db,
+	}
 }
 
 func (repo *RepositoryImpl) create(ctx context.Context, data subforum) (subforum, error) {
 	_, err := repo.DB.ExecContext(
 		ctx,
-		"INSERT INTO subforums (id, name, description, user_id, created_at) VALUES (?,?,?,?,?)",
+		"INSERT INTO subforums (id, name, description, user_id, icon, banner, created_at) VALUES (?,?,?,?,?,?,?)",
 		data.id,
 		data.name,
 		data.description,
 		data.userId,
+		data.icon,
+		data.banner,
 		data.createdAt,
 	)
 	if err != nil {
@@ -39,7 +49,7 @@ func (repo *RepositoryImpl) findByName(ctx context.Context, name string) ([]subf
 	subforums := []subforum{}
 	rows, err := repo.DB.QueryContext(
 		ctx,
-		"SELECT id, name, description, user_id, created_at FROM subforums WHERE name = ?",
+		"SELECT id, name, description, user_id, icon, created_at FROM subforums WHERE name = ?",
 		name,
 	)
 	if err != nil {
@@ -47,7 +57,7 @@ func (repo *RepositoryImpl) findByName(ctx context.Context, name string) ([]subf
 	}
 	for rows.Next() {
 		sf := subforum{}
-		err = rows.Scan(&sf.id, &sf.name, &sf.description, &sf.userId, &sf.createdAt)
+		err = rows.Scan(&sf.id, &sf.name, &sf.description, &sf.userId, &sf.icon, &sf.createdAt)
 		if err != nil {
 			return []subforum{}, fmt.Errorf("repository: fail to scan subforums %w", err)
 		}
