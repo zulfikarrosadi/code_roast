@@ -8,22 +8,23 @@ type User struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-type Authentication struct {
-	Id           string `json:"id"`
-	RefreshToken string `json:"refresh_token"`
-	LastLogin    int64  `json:"last_login"`
-	RemoteIP     string `json:"remote_ip"`
-	Agent        string `json:"agent"`
-	UserId       string `json:"user_id"`
+// doesn't have json tag because the data is generated from system
+type authentication struct {
+	id           string
+	refreshToken string
+	lastLogin    int64
+	remoteIP     string
+	agent        string
+	userId       string
 }
 
 type userCreateRequest struct {
-	Id        string `json:"id"`
-	Fullname  string `json:"fullname"`
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	CreatedAt int64  `json:"created_at"`
-	Authentication
+	Id       string `json:"id"`
+	Fullname string `json:"fullname"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Agent    string `json:"agent"`
+	RemoteIp string `json:"remote_ip"`
 }
 
 type userCreateResponse struct {
@@ -34,8 +35,8 @@ type userCreateResponse struct {
 
 type authResponse struct {
 	User         userCreateResponse `json:"user"`
-	AccessToken  string             `json:"accessToken"`
-	RefreshToken string             `json:"refreshToken"`
+	AccessToken  string             `json:"access_token"`
+	RefreshToken string             `json:"refresh_token"`
 }
 
 type userLoginRequest struct {
