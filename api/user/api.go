@@ -2,15 +2,18 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/labstack/echo/v4"
+	"github.com/zulfikarrosadi/code_roast/schema"
 )
 
 type Service interface {
-	Create(context.Context, newUser) (*SuccessResponse[authResponse], *ErrorResponse)
-	Login(context.Context, userLoginRequest) (*SuccessResponse[authResponse], *ErrorResponse)
+	register(context.Context, userCreateRequest) (schema.Response[authResponse], error)
+	login(context.Context, userLoginRequest) (schema.Response[authResponse], error)
 }
 
 type ApiHandler struct {
@@ -25,47 +28,75 @@ func NewApiHandler(logger *slog.Logger, service Service) *ApiHandler {
 	}
 }
 
-const WEEK_IN_SECOND = 604_800
+const (
+	WEEK_IN_SECOND = 604_800
+	REQUEST_ID_KEY = "REQUEST_ID"
+)
 
 func (api *ApiHandler) Login(c echo.Context) error {
 	user := new(userLoginRequest)
-	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
-		api.Logger.LogAttrs(ctx,
-			slog.LevelError,
-			"REQUEST_ERROR",
-			slog.Group("details",
-				slog.String("message", "Failed to assert claims"),
-				slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
-			))
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusInternalServerError),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
 		return echo.NewHTTPError(
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
 		)
 	}
-	successResponse, errResponse := api.Service.Login(ctx, *user)
-	if errResponse != nil {
-		return echo.NewHTTPError(errResponse.Error.Code, errResponse.Error.Message)
+	response, err := api.Service.login(ctx, *user)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 
 	c.SetCookie(&http.Cookie{
 		Name:     "refresh_token",
-		Value:    successResponse.Data.RefreshToken,
+		Value:    response.Data.RefreshToken,
 		Secure:   true,
 		MaxAge:   WEEK_IN_SECOND,
 		Path:     "/api/v1/refresh",
 		HttpOnly: true,
 	})
-	err := c.JSON(http.StatusOK, successResponse)
+	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx,
-			slog.LevelError,
-			"REQUEST_ERROR",
-			slog.Group("details",
-				slog.String("message", "fail sending JSON response"),
-				slog.String("request_id", ctx.Value("REQUEST_ID").(string)),
-			))
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
@@ -79,42 +110,70 @@ func (api *ApiHandler) Register(c echo.Context) error {
 	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
-		api.Logger.LogAttrs(
-			c.Request().Context(),
-			slog.LevelError,
-			"fail request binding",
-			slog.Any("details", err),
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusBadRequest),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
 		)
 		return echo.NewHTTPError(
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
 		)
 	}
-	successRes, errorRes := api.Service.Create(ctx, newUser{
-		id:       user.Id,
-		fullname: user.Fullname,
-		email:    user.Email,
-		password: user.Password,
-		agent:    c.Request().UserAgent(),
-		remoteIp: c.Request().RemoteAddr,
+	response, err := api.Service.register(ctx, userCreateRequest{
+		Id:       user.Id,
+		Fullname: user.Fullname,
+		Email:    user.Email,
+		Password: user.Password,
+		Agent:    c.Request().UserAgent(),
+		RemoteIp: c.Request().RemoteAddr,
 	})
-	if errorRes != nil {
-		return echo.NewHTTPError(errorRes.Error.Code, errorRes.Error.Message)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	c.SetCookie(&http.Cookie{
 		Name:     "refresh_token",
-		Value:    successRes.Data.RefreshToken,
+		Value:    response.Data.RefreshToken,
 		Secure:   true,
 		MaxAge:   WEEK_IN_SECOND,
 		Path:     "/api/v1/refresh",
 		HttpOnly: true,
 	})
-	err := c.JSON(http.StatusCreated, successRes)
+	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(
-			c.Request().Context(),
-			slog.LevelError, "fail sending json response",
-			slog.Any("details", err),
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusInternalServerError),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
 		)
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
