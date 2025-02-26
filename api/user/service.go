@@ -19,6 +19,7 @@ import (
 type Repository interface {
 	register(context.Context, userAndAuth) (publicUserData, error)
 	findByEmail(context.Context, string) (User, error)
+	findRefreshToken(context.Context, string) (publicUserData, error)
 }
 
 type ServiceImpl struct {
@@ -38,6 +39,54 @@ type CustomJWTClaims struct {
 	Email    string `json:"email"`
 	Fullname string `json:"fullname"`
 	jwt.RegisteredClaims
+}
+
+var JWT_SECRET = os.Getenv("JWT_SECRET")
+
+func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (schema.Response[authResponse], error) {
+	user, err := service.findRefreshToken(ctx, token)
+	if err != nil {
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusUnauthorized,
+			Error: schema.Error{
+				Message: "refresh token lookup not found",
+			},
+		}, err
+	}
+	newAccessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomJWTClaims{
+		Id:       user.id,
+		Email:    user.email,
+		Fullname: user.fullname,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	},
+	).SignedString([]byte(JWT_SECRET))
+	if err != nil {
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "something went wrong, generate new access token fail, please try again later",
+			},
+		}, fmt.Errorf("service: generate new access token fail %w", err)
+	}
+	return schema.Response[authResponse]{
+		Status: "success",
+		Code:   http.StatusOK,
+		Data: authResponse{
+			User: userCreateResponse{
+				ID:       user.id,
+				Email:    user.email,
+				Fullname: user.fullname,
+			},
+			AccessToken:  newAccessToken,
+			RefreshToken: token,
+		},
+	}, nil
 }
 
 func (service *ServiceImpl) register(
