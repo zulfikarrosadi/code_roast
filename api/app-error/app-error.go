@@ -2,6 +2,7 @@ package apperror
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -27,41 +28,24 @@ func New(code int, message string, err error) error {
 	}
 }
 
-type ErrorDetail struct {
-	Path    []string `json:"path"`
-	Value   string   `json:"value"`
-	Message string   `json:"message"`
-}
-
 const (
 	VALIDATION_ERROR = "validation error"
 )
 
-func ValidateError(validationError validator.ValidationErrors) []ErrorDetail {
-	errorDetails := []ErrorDetail{}
+type ErrorDetails map[string]string
 
+func HandlerValidatorError(validationError validator.ValidationErrors) ErrorDetails {
+	errorDetails := make(ErrorDetails)
 	for _, fieldError := range validationError {
+		fmt.Printf("tag: %s, field: %s", fieldError.Tag(), fieldError.Field())
 		switch fieldError.Tag() {
 		case "required":
-			errorDetail := ErrorDetail{
-				Path:    []string{fieldError.Field()},
-				Message: fieldError.Field() + " is required",
-			}
-			errorDetails = append(errorDetails, errorDetail)
+			errorDetails[strings.ToLower(fieldError.Field())] = fieldError.Field() + " is required"
 		case "email":
-			errorDetail := ErrorDetail{
-				Path:    []string{fieldError.Field()},
-				Message: "invalid email format",
-			}
-			errorDetails = append(errorDetails, errorDetail)
+			errorDetails[strings.ToLower(fieldError.Field())] = "invalid email format"
 		case "eqfield":
-			fmt.Println(fieldError.Field(), fieldError.StructField())
-			if fieldError.Field() == "passwordConfirmation" {
-				errorDetail := ErrorDetail{
-					Path:    []string{"password", fieldError.Field()},
-					Message: "password and password confirmation is not match",
-				}
-				errorDetails = append(errorDetails, errorDetail)
+			if fieldError.Field() == "PasswordConfirmation" {
+				errorDetails["password"] = "password and password confirmation not match"
 			}
 		}
 	}
