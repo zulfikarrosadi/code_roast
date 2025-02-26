@@ -19,12 +19,13 @@ type authentication struct {
 }
 
 type userCreateRequest struct {
-	Id       string `json:"id"`
-	Fullname string `json:"fullname"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Agent    string `json:"agent"`
-	RemoteIp string `json:"remote_ip"`
+	Id                   string `json:"id"`
+	Fullname             string `json:"fullname" validate:"required"`
+	Email                string `json:"email" validate:"required,email"`
+	Password             string `json:"password" validate:"required"`
+	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+	Agent                string `json:"agent"`
+	RemoteIp             string `json:"remote_ip"`
 }
 
 type userCreateResponse struct {
