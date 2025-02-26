@@ -41,7 +41,7 @@ func NewService(repo repository, v *validator.Validate) *ServiceImpl {
 func (service *ServiceImpl) create(ctx context.Context, data subforumCreateRequest) (schema.Response[subforumResponse], error) {
 	err := service.v.Struct(data)
 	if err != nil {
-		validatorError := apperror.ValidateError(err.(validator.ValidationErrors))
+		validatorError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
 		return schema.Response[subforumResponse]{
 			Status: "fail",
 			Code:   http.StatusBadRequest,
