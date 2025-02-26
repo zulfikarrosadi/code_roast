@@ -222,6 +222,19 @@ func (service *ServiceImpl) login(
 	ctx context.Context,
 	user userLoginRequest,
 ) (schema.Response[authResponse], error) {
+	err := service.v.Struct(user)
+	if err != nil {
+		validationErrorDetail := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusBadRequest,
+			Error: schema.Error{
+				Message: apperror.VALIDATION_ERROR,
+				Details: validationErrorDetail,
+			},
+		}, fmt.Errorf("service: input validation error %w", err)
+	}
+
 	refreshToken, err := uuid.NewV7()
 	if err != nil {
 		return schema.Response[authResponse]{

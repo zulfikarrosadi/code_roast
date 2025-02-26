@@ -124,6 +124,39 @@ func (api *ApiHandler) Login(c echo.Context) error {
 	}
 	response, err := api.Service.login(ctx, *user)
 	if err != nil {
+		if response.Error.Message == apperror.VALIDATION_ERROR {
+			api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+				slog.Int("status", response.Code),
+				slog.Group("request",
+					slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+					slog.String("method", c.Request().Method),
+					slog.String("path", c.Request().URL.Path),
+					slog.String("user_agent", c.Request().UserAgent()),
+					slog.String("ip", c.Request().RemoteAddr),
+					slog.Any("authorization", c.Request().Header.Get("Authorization")),
+				),
+				slog.String("error", err.Error()),
+				slog.String("trace", string(debug.Stack())),
+			)
+			err = c.JSON(response.Code, response)
+			if err != nil {
+				api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+					slog.Int("status", response.Code),
+					slog.Group("request",
+						slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+						slog.String("method", c.Request().Method),
+						slog.String("path", c.Request().URL.Path),
+						slog.String("user_agent", c.Request().UserAgent()),
+						slog.String("ip", c.Request().RemoteAddr),
+						slog.Any("authorization", c.Request().Header.Get("Authorization")),
+					),
+					slog.String("error", err.Error()),
+					slog.String("trace", string(debug.Stack())),
+				)
+				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
+			}
+			return nil
+		}
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
 			slog.Int("status", response.Code),
 			slog.Group("request",
