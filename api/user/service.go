@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
@@ -23,14 +23,14 @@ type Repository interface {
 }
 
 type ServiceImpl struct {
-	*slog.Logger
 	Repository
+	v *validator.Validate
 }
 
-func NewUserService(logger *slog.Logger, repo Repository) *ServiceImpl {
+func NewUserService(repo Repository, v *validator.Validate) *ServiceImpl {
 	return &ServiceImpl{
-		Logger:     logger,
 		Repository: repo,
+		v:          v,
 	}
 }
 
@@ -93,6 +93,20 @@ func (service *ServiceImpl) register(
 	ctx context.Context,
 	newUser userCreateRequest,
 ) (schema.Response[authResponse], error) {
+	fmt.Println(newUser)
+	err := service.v.Struct(newUser)
+	if err != nil {
+		validatorError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusBadRequest,
+			Error: schema.Error{
+				Message: apperror.VALIDATION_ERROR,
+				Details: validatorError,
+			},
+		}, fmt.Errorf("service: create new user validation error %w", err)
+	}
+
 	newUserId, err := uuid.NewV7()
 	if err != nil {
 		return schema.Response[authResponse]{
@@ -179,7 +193,7 @@ func (service *ServiceImpl) register(
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
 	},
-	).SignedString([]byte(os.Getenv("JWT_SECRETS")))
+	).SignedString([]byte(JWT_SECRET))
 	if err != nil {
 		return schema.Response[authResponse]{
 			Status: "fail",
@@ -259,7 +273,7 @@ func (service *ServiceImpl) login(
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
 	},
-	).SignedString([]byte(os.Getenv("JWT_SECRETS")))
+	).SignedString([]byte(JWT_SECRET))
 	if err != nil {
 		return schema.Response[authResponse]{
 			Status: "fail",
