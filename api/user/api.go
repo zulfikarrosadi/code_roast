@@ -141,7 +141,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 	}
 
 	c.SetCookie(&http.Cookie{
-		Name:     "refresh_token",
+		Name:     REFRESH_TOKEN_NAME,
 		Value:    response.Data.RefreshToken,
 		Secure:   true,
 		MaxAge:   WEEK_IN_SECOND,
@@ -172,7 +172,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 }
 
 func (api *ApiHandler) Register(c echo.Context) error {
-	user := new(User)
+	user := new(userCreateRequest)
 	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
@@ -195,14 +195,35 @@ func (api *ApiHandler) Register(c echo.Context) error {
 		)
 	}
 	response, err := api.Service.register(ctx, userCreateRequest{
-		Id:       user.Id,
-		Fullname: user.Fullname,
-		Email:    user.Email,
-		Password: user.Password,
-		Agent:    c.Request().UserAgent(),
-		RemoteIp: c.Request().RemoteAddr,
+		Id:                   user.Id,
+		Fullname:             user.Fullname,
+		PasswordConfirmation: user.PasswordConfirmation,
+		Email:                user.Email,
+		Password:             user.Password,
+		Agent:                c.Request().UserAgent(),
+		RemoteIp:             c.Request().RemoteAddr,
 	})
 	if err != nil {
+		if response.Error.Message == apperror.VALIDATION_ERROR {
+			err = c.JSON(response.Code, response)
+			if err != nil {
+				api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+					slog.Int("status", http.StatusInternalServerError),
+					slog.Group("request",
+						slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+						slog.String("method", c.Request().Method),
+						slog.String("path", c.Request().URL.Path),
+						slog.String("user_agent", c.Request().UserAgent()),
+						slog.String("ip", c.Request().RemoteAddr),
+						slog.Any("authorization", c.Request().Header.Get("Authorization")),
+					),
+					slog.String("error", err.Error()),
+					slog.String("trace", string(debug.Stack())),
+				)
+				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
+			}
+			return nil
+		}
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
 			slog.Int("status", response.Code),
 			slog.Group("request",
@@ -219,7 +240,7 @@ func (api *ApiHandler) Register(c echo.Context) error {
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	c.SetCookie(&http.Cookie{
-		Name:     "refresh_token",
+		Name:     REFRESH_TOKEN_NAME,
 		Value:    response.Data.RefreshToken,
 		Secure:   true,
 		MaxAge:   WEEK_IN_SECOND,
