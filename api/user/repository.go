@@ -43,6 +43,22 @@ type publicUserData struct {
 	email    string
 }
 
+func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) (publicUserData, error) {
+	user := new(publicUserData)
+	err := repo.DB.QueryRowContext(
+		ctx,
+		"SELECT u.email, u.id, u.fullname FROM authentication as a JOIN users as u ON a.user_id = u.id WHERE refresh_token = ?",
+		token,
+	).Scan(&user.email, &user.id, &user.fullname)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return publicUserData{}, errors.New("refresh token not found")
+		}
+		return publicUserData{}, fmt.Errorf("repository: db query scan failed, %w", err)
+	}
+	return *user, nil
+}
+
 func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string) (User, error) {
 	user := new(User)
 	err := repo.DB.QueryRowContext(
