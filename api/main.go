@@ -109,7 +109,7 @@ func main() {
 		SigningMethod: echojwt.AlgorithmHS256,
 		Skipper: func(c echo.Context) bool {
 			fmt.Println(c.Path())
-			if c.Path() == "/api/v1/signin" || c.Path() == "/api/v1/signup" {
+			if c.Path() == "/api/v1/signin" || c.Path() == "/api/v1/signup" || c.Path() == "/api/v1/refresh" {
 				return true
 			}
 			return false
@@ -166,17 +166,19 @@ func main() {
 	if err != nil {
 		panic("cloudnary fail to initiate")
 	}
+	v := validator.New()
 	userRepository := user.NewUserRepository(logger, db)
-	userService := user.NewUserService(logger, userRepository)
+	userService := user.NewUserService(userRepository, v)
 	userApi := user.NewApiHandler(logger, userService)
 
 	subforumRepository := subforum.NewRepository(db)
-	subforumService := subforum.NewService(subforumRepository, validator.New())
+	subforumService := subforum.NewService(subforumRepository, v)
 	subforumApi := subforum.NewApi(subforumService, cld, logger)
 
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
+	r.GET("/refresh", userApi.RefreshToken)
 	r.POST("/subforums", subforumApi.Create)
 	r.GET("/", func(c echo.Context) error {
 		token := c.Get("user").(*jwt.Token)
