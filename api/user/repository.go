@@ -61,9 +61,28 @@ type publicUserData struct {
 
 func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) (publicUserData, error) {
 	user := new(publicUserData)
-	err := repo.DB.QueryRowContext(
+	tx, err := repo.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return publicUserData{}, fmt.Errorf("repository: transaction begin error: %w", err)
+	}
+	defer func() {
+		// handle panic in extreamely rare case condition e.g driver fails
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+	err = tx.QueryRowContext(
 		ctx,
-		"SELECT u.email, u.id, u.fullname FROM authentication as a JOIN users as u ON a.user_id = u.id WHERE refresh_token = ?",
+		`
+		SELECT u.email , u.id, u.fullname
+		FROM authentication AS a
+		JOIN users AS u
+		ON a.user_id = u.id
+		WHERE refresh_token = ?
+		`,
 		token,
 	).Scan(&user.email, &user.id, &user.fullname)
 	if err != nil {
@@ -71,6 +90,35 @@ func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) 
 			return publicUserData{}, errors.New("refresh token not found")
 		}
 		return publicUserData{}, fmt.Errorf("repository: db query scan failed, %w", err)
+	}
+	rows, err := tx.QueryContext(
+		ctx,
+		`
+		SELECT r.id as id, r.name as role
+		FROM users AS u
+		JOIN user_roles AS ur
+		ON u.id = ur.user_id
+		JOIN roles AS r
+		ON ur.role_id = r.id
+		WHERE u.id = ?;
+		`,
+		user.id,
+	)
+	if err != nil {
+		return publicUserData{}, fmt.Errorf("repository: role lookup fail %w", err)
+	}
+	defer rows.Close()
+
+	userRoles := []roles{}
+	for rows.Next() {
+		role := roles{}
+		rows.Scan(&role.Id, &role.Name)
+		userRoles = append(userRoles, role)
+	}
+	user.roles = userRoles
+	err = tx.Commit()
+	if err != nil {
+		return publicUserData{}, fmt.Errorf("failed to commit transaction %w", err)
 	}
 	return *user, nil
 }
