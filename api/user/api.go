@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
@@ -121,6 +122,11 @@ func (api *ApiHandler) Login(c echo.Context) error {
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
 		)
+	}
+	user.authentication = authentication{
+		lastLogin: time.Now().Unix(),
+		remoteIP:  c.Request().RemoteAddr,
+		agent:     c.Request().UserAgent(),
 	}
 	response, err := api.Service.login(ctx, *user)
 	if err != nil {
