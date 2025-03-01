@@ -35,9 +35,10 @@ func NewUserService(repo Repository, v *validator.Validate) *ServiceImpl {
 }
 
 type CustomJWTClaims struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Fullname string `json:"fullname"`
+	Id       string  `json:"id"`
+	Email    string  `json:"email"`
+	Fullname string  `json:"fullname"`
+	Roles    []roles `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -82,6 +83,7 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
+				Roles:    user.roles,
 			},
 			AccessToken:  newAccessToken,
 			RefreshToken: token,
@@ -187,6 +189,7 @@ func (service *ServiceImpl) register(
 		Id:       user.id,
 		Email:    user.email,
 		Fullname: user.fullname,
+		Roles:    user.roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -211,6 +214,7 @@ func (service *ServiceImpl) register(
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
+				Roles:    user.roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),
@@ -280,6 +284,7 @@ func (service *ServiceImpl) login(
 		Id:       result.Id,
 		Email:    result.Email,
 		Fullname: result.Fullname,
+		Roles:    result.Roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -304,6 +309,7 @@ func (service *ServiceImpl) login(
 				ID:       result.Id,
 				Email:    result.Email,
 				Fullname: result.Fullname,
+				Roles:    result.Roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),
