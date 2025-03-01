@@ -18,7 +18,7 @@ import (
 
 type Repository interface {
 	register(context.Context, userAndAuth) (publicUserData, error)
-	findByEmail(context.Context, string) (User, error)
+	findByEmail(context.Context, string, authentication) (User, error)
 	findRefreshToken(context.Context, string) (publicUserData, error)
 }
 
@@ -249,7 +249,27 @@ func (service *ServiceImpl) login(
 			},
 		}, fmt.Errorf("service: fail generate new refresh token, %w", err)
 	}
-	result, err := service.Repository.findByEmail(ctx, user.Email)
+	authId, err := uuid.NewV7()
+	if err != nil {
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "fail process your request, please try again later",
+			},
+		}, fmt.Errorf("service: fail generate new auth id, %w", err)
+	}
+	result, err := service.Repository.findByEmail(
+		ctx,
+		user.Email,
+		authentication{
+			id:           authId.String(),
+			refreshToken: refreshToken.String(),
+			lastLogin:    user.authentication.lastLogin,
+			remoteIP:     user.authentication.remoteIP,
+			agent:        user.authentication.agent,
+		},
+	)
 	if err != nil {
 		fmt.Println("service: ", err)
 		var authError authError
