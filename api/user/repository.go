@@ -123,9 +123,24 @@ func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) 
 	return *user, nil
 }
 
-func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string) (User, error) {
+func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string, auth authentication) (User, error) {
 	user := new(User)
-	err := repo.DB.QueryRowContext(
+
+	tx, err := repo.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return User{}, fmt.Errorf("repository: transaction begin error: %w", err)
+	}
+	defer func() {
+		// handle panic in extreamely rare case condition e.g driver fails
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = tx.QueryRowContext(
 		ctx,
 		"SELECT id, fullname, password, email FROM users WHERE email = ?",
 		email,
@@ -137,11 +152,54 @@ func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string) (User
 		}
 		return User{}, fmt.Errorf("repository: db query scan failed, %w", err)
 	}
+	_, err = tx.ExecContext(
+		ctx,
+		"INSERT INTO authentication (id, refresh_token, last_login, remote_ip, agent, user_id) VALUES(?,?,?,?,?,?)",
+		auth.id,
+		auth.refreshToken,
+		auth.lastLogin,
+		auth.remoteIP,
+		auth.agent,
+		user.Id,
+	)
+	if err != nil {
+		return User{}, fmt.Errorf("repository: insert new user auth credentials failed %w", err)
+	}
+	rows, err := tx.QueryContext(
+		ctx,
+		`
+			SELECT r.id as id, r.name as role
+			FROM users AS u
+			JOIN user_roles AS ur 
+			ON u.id = ur.user_id 
+			JOIN roles AS r 
+			ON ur.role_id = r.id
+			WHERE u.email = ?;
+		`,
+		email,
+	)
+	if err != nil {
+		return User{}, fmt.Errorf("repository: role lookup fail %w", err)
+	}
+	defer rows.Close()
+
+	userRoles := []roles{}
+	for rows.Next() {
+		role := roles{}
+		rows.Scan(&role.Id, &role.Name)
+		userRoles = append(userRoles, role)
+	}
+	err = tx.Commit()
+	if err != nil {
+		return User{}, fmt.Errorf("failed to commit transaction %w", err)
+	}
+
 	return User{
 		Id:       user.Id,
 		Fullname: user.Fullname,
 		Email:    user.Email,
 		Password: user.Password,
+		Roles:    userRoles,
 	}, nil
 }
 
