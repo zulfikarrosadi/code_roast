@@ -2,8 +2,8 @@ package subforum
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"runtime/debug"
 
@@ -29,10 +29,10 @@ type ApiImpl struct {
 
 type subforumCreateRequest struct {
 	UserId      string
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description" validate:"required"`
-	Icon        string `json:"icon" validate:"required"`
-	Banner      string `json:"banner" validate:"required"`
+	Name        string                `form:"name" validate:"required"`
+	Description string                `form:"description" validate:"required"`
+	Icon        *multipart.FileHeader `form:"icon" validate:"required"`
+	Banner      *multipart.FileHeader `form:"banner" validate:"required"`
 }
 
 func NewApi(service service, cld *cloudinary.Cloudinary, logger *slog.Logger) *ApiImpl {
@@ -56,164 +56,24 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	}
 
 	newSubforum := subforumCreateRequest{}
+	err := c.Bind(&newSubforum)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusBadRequest),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		return echo.NewHTTPError(http.StatusBadRequest, "fail to create new subforum, bind error")
+	}
 	newSubforum.UserId = user.Id
-	newSubforum.Name = c.FormValue("name")
-	newSubforum.Description = c.FormValue("description")
-	subForumIcon, err := c.FormFile("icon")
-	if err != nil {
-		fmt.Println(err)
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusBadRequest, "something went wrong, enter correct information and please try again")
-	}
-	subForumBanner, err := c.FormFile("banner")
-	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusBadRequest, "something went wrong, enter correct information and please try again")
-	}
-	iconSrc, err := subForumIcon.Open()
-	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
-	}
-	defer iconSrc.Close()
-	if _, err := imagehelper.IsImage(iconSrc); err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusBadRequest, "unsupported icon file type, only upload jpg or png file")
-	}
-
-	subForumIconUpload, err := api.cld.Upload.Upload(
-		c.Request().Context(),
-		iconSrc,
-		uploader.UploadParams{
-			ResourceType: "image",
-		},
-	)
-	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-
-		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
-	}
-	bannerSrc, err := subForumBanner.Open()
-	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
-	}
-	defer bannerSrc.Close()
-	if _, err := imagehelper.IsImage(bannerSrc); err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusBadRequest, "unsupported banner file type, only upload jpg or png file")
-	}
-
-	subForumBannerUpload, err := api.cld.Upload.Upload(
-		c.Request().Context(),
-		bannerSrc,
-		uploader.UploadParams{
-			ResourceType: "image",
-		},
-	)
-	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
-		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
-	}
-	newSubforum.Icon = subForumIconUpload.SecureURL
-	newSubforum.Banner = subForumBannerUpload.SecureURL
-
 	response, err := api.service.create(c.Request().Context(), newSubforum)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
