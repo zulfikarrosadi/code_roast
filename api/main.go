@@ -179,7 +179,7 @@ func main() {
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
 	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create)
+	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.GET("/", func(c echo.Context) error {
 		token := c.Get("user").(*jwt.Token)
 
@@ -196,6 +196,30 @@ func main() {
 		return nil
 	})
 	e.Start("localhost:3000")
+}
+
+func roles(requiredRoles []int) func(echo.HandlerFunc) echo.HandlerFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			token := c.Get("user").(*jwt.Token)
+
+			claims, ok := token.Claims.(*user.CustomJWTClaims)
+			if !ok {
+				return echo.NewHTTPError(http.StatusForbidden, "you don't have perimission to do this operation")
+			}
+
+			roleSet := make(map[int]bool)
+			for _, role := range claims.Roles {
+				roleSet[role.Id] = true
+			}
+			for _, reqRole := range requiredRoles {
+				if !roleSet[reqRole] {
+					return echo.NewHTTPError(http.StatusForbidden, "you don't have permission to do this operation")
+				}
+			}
+			return next(c)
+		}
+	}
 }
 
 func OpenDBConnection(logger *slog.Logger) *sql.DB {
