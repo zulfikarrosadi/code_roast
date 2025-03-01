@@ -37,10 +37,26 @@ const (
 	DUPLICATE_CONSTRAINT_ERROR = 1062
 )
 
+const (
+	ROLE_ID_CREATE_SUBFORUM = 1
+	ROLE_ID_UPDATE_SUBFORUM = 2
+	ROLE_ID_DELETE_SUBFORUM = 3
+	ROLE_ID_MEMBER          = 4
+	ROLE_ID_DELETE_POST     = 5
+	ROLE_ID_APPROVE_POST    = 6
+	ROLE_ID_TAKE_DOWN_POST  = 7
+)
+
+type roles struct {
+	Id   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 type publicUserData struct {
 	id       string
 	fullname string
 	email    string
+	roles    []roles
 }
 
 func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) (publicUserData, error) {
@@ -138,6 +154,15 @@ func (repository *RepositoryImpl) register(ctx context.Context, user userAndAuth
 		}
 		return publicUserData{}, fmt.Errorf("repository: insert new user auth credentials failed: %w", err)
 	}
+	_, err = tx.ExecContext(
+		ctx,
+		"INSERT INTO user_roles (user_id, role_id) VALUES(?,?)",
+		user.id,
+		ROLE_ID_MEMBER,
+	)
+	if err != nil {
+		return publicUserData{}, fmt.Errorf("repository: attaching new role to new user failed %w", err)
+	}
 	err = tx.Commit()
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: failed to commit transaction: %w", err)
@@ -146,5 +171,11 @@ func (repository *RepositoryImpl) register(ctx context.Context, user userAndAuth
 		id:       user.id,
 		fullname: user.fullname,
 		email:    user.email,
+		roles: []roles{
+			roles{
+				Id:   ROLE_ID_MEMBER,
+				Name: "member",
+			},
+		},
 	}, nil
 }
