@@ -1,11 +1,12 @@
 package user
 
 type User struct {
-	Id        string `json:"id"`
-	Fullname  string `json:"fullname"`
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	CreatedAt int64  `json:"created_at"`
+	Id        string  `json:"id"`
+	Fullname  string  `json:"fullname"`
+	Email     string  `json:"email"`
+	Password  string  `json:"password"`
+	CreatedAt int64   `json:"created_at"`
+	Roles     []roles `json:"roles"`
 }
 
 // doesn't have json tag because the data is generated from system
@@ -29,9 +30,10 @@ type userCreateRequest struct {
 }
 
 type userCreateResponse struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Fullname string `json:"fullname"`
+	ID       string  `json:"id"`
+	Email    string  `json:"email"`
+	Fullname string  `json:"fullname"`
+	Roles    []roles `json:"roles"`
 }
 
 type authResponse struct {
@@ -43,4 +45,5 @@ type authResponse struct {
 type userLoginRequest struct {
 	Email    string `json:"email" validate:"required"`
 	Password string `json:"password" validate:"required"`
+	authentication
 }
