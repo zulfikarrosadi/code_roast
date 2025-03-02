@@ -12,51 +12,60 @@ import (
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
 )
 
-type authError struct {
-	Msg  string
-	Code int
-}
+type (
+	RepositoryImpl struct {
+		*slog.Logger
+		*sql.DB
+	}
 
-func (authError authError) Error() string {
-	return authError.Msg
-}
+	user struct {
+		id        string
+		fullname  string
+		email     string
+		password  string
+		createdAt int64
+		roles     []roles
+	}
 
-type RepositoryImpl struct {
-	*slog.Logger
-	*sql.DB
-}
+	// these data is populated by system
+	authentication struct {
+		id           string
+		refreshToken string
+		lastLogin    int64
+		remoteIP     string
+		agent        string
+		userId       string
+	}
+
+	roles struct {
+		Id   int    `json:"id"`
+		Name string `json:"name"`
+	}
+
+	publicUserData struct {
+		id       string
+		fullname string
+		email    string
+		roles    []roles
+	}
+)
+
+const (
+	DUPLICATE_CONSTRAINT_ERROR = 1062
+	ROLE_ID_CREATE_SUBFORUM    = 1
+	ROLE_ID_UPDATE_SUBFORUM    = 2
+	ROLE_ID_DELETE_SUBFORUM    = 3
+	ROLE_ID_MEMBER             = 4
+	ROLE_ID_DELETE_POST        = 5
+	ROLE_ID_APPROVE_POST       = 6
+	ROLE_ID_TAKE_DOWN_POST     = 7
+)
 
 func NewUserRepository(logger *slog.Logger, db *sql.DB) *RepositoryImpl {
 	return &RepositoryImpl{
 		Logger: logger,
 		DB:     db,
 	}
-}
-
-const (
-	DUPLICATE_CONSTRAINT_ERROR = 1062
-)
-
-const (
-	ROLE_ID_CREATE_SUBFORUM = 1
-	ROLE_ID_UPDATE_SUBFORUM = 2
-	ROLE_ID_DELETE_SUBFORUM = 3
-	ROLE_ID_MEMBER          = 4
-	ROLE_ID_DELETE_POST     = 5
-	ROLE_ID_APPROVE_POST    = 6
-	ROLE_ID_TAKE_DOWN_POST  = 7
-)
-
-type roles struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type publicUserData struct {
-	id       string
-	fullname string
-	email    string
-	roles    []roles
 }
 
 func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) (publicUserData, error) {
@@ -123,12 +132,13 @@ func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) 
 	return *user, nil
 }
 
-func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string, auth authentication) (User, error) {
-	user := new(User)
+// this method is not only find user by email, but inserting user auth details in db at once
+func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth authentication) (user, error) {
+	userFromDb := new(user)
 
 	tx, err := repo.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return User{}, fmt.Errorf("repository: transaction begin error: %w", err)
+		return user{}, fmt.Errorf("repository: transaction begin error: %w", err)
 	}
 	defer func() {
 		// handle panic in extreamely rare case condition e.g driver fails
@@ -144,13 +154,13 @@ func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string, auth 
 		ctx,
 		"SELECT id, fullname, password, email FROM users WHERE email = ?",
 		email,
-	).Scan(&user.Id, &user.Fullname, &user.Password, &user.Email)
+	).Scan(&userFromDb.id, &userFromDb.fullname, &userFromDb.password, &userFromDb.email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// we use authError to make it easier to directly handle this case
-			return User{}, authError{Msg: "email or password is invalid", Code: http.StatusBadRequest}
+			// we use apperror to make it easier to directly handle this case
+			return user{}, apperror.New(http.StatusBadRequest, "email or password is incorrect", err)
 		}
-		return User{}, fmt.Errorf("repository: db query scan failed, %w", err)
+		return user{}, fmt.Errorf("repository: db query scan failed, %w", err)
 	}
 	_, err = tx.ExecContext(
 		ctx,
@@ -160,26 +170,26 @@ func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string, auth 
 		auth.lastLogin,
 		auth.remoteIP,
 		auth.agent,
-		user.Id,
+		userFromDb.id,
 	)
 	if err != nil {
-		return User{}, fmt.Errorf("repository: insert new user auth credentials failed %w", err)
+		return user{}, fmt.Errorf("repository: insert new user auth credentials failed %w", err)
 	}
 	rows, err := tx.QueryContext(
 		ctx,
 		`
 			SELECT r.id as id, r.name as role
 			FROM users AS u
-			JOIN user_roles AS ur 
-			ON u.id = ur.user_id 
-			JOIN roles AS r 
+			JOIN user_roles AS ur
+			ON u.id = ur.user_id
+			JOIN roles AS r
 			ON ur.role_id = r.id
 			WHERE u.email = ?;
 		`,
 		email,
 	)
 	if err != nil {
-		return User{}, fmt.Errorf("repository: role lookup fail %w", err)
+		return user{}, fmt.Errorf("repository: role lookup fail %w", err)
 	}
 	defer rows.Close()
 
@@ -191,28 +201,19 @@ func (repo *RepositoryImpl) findByEmail(ctx context.Context, email string, auth 
 	}
 	err = tx.Commit()
 	if err != nil {
-		return User{}, fmt.Errorf("failed to commit transaction %w", err)
+		return user{}, fmt.Errorf("failed to commit transaction %w", err)
 	}
 
-	return User{
-		Id:       user.Id,
-		Fullname: user.Fullname,
-		Email:    user.Email,
-		Password: user.Password,
-		Roles:    userRoles,
+	return user{
+		id:       userFromDb.id,
+		fullname: userFromDb.fullname,
+		email:    userFromDb.email,
+		password: userFromDb.password,
+		roles:    userRoles,
 	}, nil
 }
 
-type userAndAuth struct {
-	id        string
-	fullname  string
-	email     string
-	password  string
-	createdAt int64
-	authentication
-}
-
-func (repository *RepositoryImpl) register(ctx context.Context, user userAndAuth) (publicUserData, error) {
+func (repository *RepositoryImpl) register(ctx context.Context, user user, auth authentication) (publicUserData, error) {
 	tx, err := repository.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: transaction begin error: %w", err)
@@ -246,11 +247,11 @@ func (repository *RepositoryImpl) register(ctx context.Context, user userAndAuth
 	_, err = tx.ExecContext(
 		ctx,
 		"INSERT INTO authentication (id, refresh_token, last_login, remote_ip, agent, user_id) VALUES(?,?,?,?,?,?)",
-		user.authentication.id,
-		user.authentication.refreshToken,
-		user.authentication.lastLogin,
-		user.authentication.remoteIP,
-		user.authentication.agent,
+		auth.id,
+		auth.refreshToken,
+		auth.lastLogin,
+		auth.remoteIP,
+		auth.agent,
 		user.id,
 	)
 	if err != nil {

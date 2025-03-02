@@ -17,8 +17,8 @@ import (
 )
 
 type Repository interface {
-	register(context.Context, userAndAuth) (publicUserData, error)
-	findByEmail(context.Context, string, authentication) (User, error)
+	register(context.Context, user, authentication) (publicUserData, error)
+	loginByEmail(context.Context, string, authentication) (user, error)
 	findRefreshToken(context.Context, string) (publicUserData, error)
 }
 
@@ -40,6 +40,36 @@ type CustomJWTClaims struct {
 	Fullname string  `json:"fullname"`
 	Roles    []roles `json:"roles"`
 	jwt.RegisteredClaims
+}
+
+type registrationRequest struct {
+	Id                   string `json:"id"`
+	Fullname             string `json:"fullname" validate:"required"`
+	Email                string `json:"email" validate:"required,email"`
+	Password             string `json:"password" validate:"required"`
+	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+	Agent                string
+	RemoteIp             string
+}
+
+type loginRequest struct {
+	Email    string `json:"email" validate:"required"`
+	Password string `json:"password" validate:"required"`
+	authentication
+}
+
+type registrationResponse struct {
+	ID       string  `json:"id"`
+	Email    string  `json:"email"`
+	Fullname string  `json:"fullname"`
+	Roles    []roles `json:"roles"`
+}
+
+// we need this to standarize auth resposne
+type authResponse struct {
+	User         registrationResponse `json:"user"`
+	AccessToken  string               `json:"access_token"`
+	RefreshToken string               `json:"refresh_token"`
 }
 
 var JWT_SECRET = os.Getenv("JWT_SECRET")
@@ -79,7 +109,7 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 		Status: "success",
 		Code:   http.StatusOK,
 		Data: authResponse{
-			User: userCreateResponse{
+			User: registrationResponse{
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
@@ -93,7 +123,7 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 
 func (service *ServiceImpl) register(
 	ctx context.Context,
-	newUser userCreateRequest,
+	newUser registrationRequest,
 ) (schema.Response[authResponse], error) {
 	fmt.Println(newUser)
 	err := service.v.Struct(newUser)
@@ -150,13 +180,16 @@ func (service *ServiceImpl) register(
 		}, fmt.Errorf("service: fail generate hash from user password, %w", err)
 	}
 
-	user, err := service.Repository.register(ctx, userAndAuth{
-		id:        newUserId.String(),
-		fullname:  newUser.Fullname,
-		email:     newUser.Email,
-		password:  string(hashedPassword),
-		createdAt: time.Now().Unix(),
-		authentication: authentication{
+	user, err := service.Repository.register(
+		ctx,
+		user{
+			id:        newUserId.String(),
+			fullname:  newUser.Fullname,
+			email:     newUser.Email,
+			password:  string(hashedPassword),
+			createdAt: time.Now().Unix(),
+		},
+		authentication{
 			id:           authenticationId.String(),
 			refreshToken: refreshToken.String(),
 			lastLogin:    time.Now().Unix(),
@@ -164,7 +197,7 @@ func (service *ServiceImpl) register(
 			agent:        newUser.Agent,
 			remoteIP:     newUser.RemoteIp,
 		},
-	})
+	)
 	if err != nil {
 		fmt.Println("error service 1: ", err)
 		var appError *apperror.AppError
@@ -210,7 +243,7 @@ func (service *ServiceImpl) register(
 		Status: "success",
 		Code:   http.StatusCreated,
 		Data: authResponse{
-			User: userCreateResponse{
+			User: registrationResponse{
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
@@ -224,7 +257,7 @@ func (service *ServiceImpl) register(
 
 func (service *ServiceImpl) login(
 	ctx context.Context,
-	user userLoginRequest,
+	user loginRequest,
 ) (schema.Response[authResponse], error) {
 	err := service.v.Struct(user)
 	if err != nil {
@@ -259,7 +292,7 @@ func (service *ServiceImpl) login(
 			},
 		}, fmt.Errorf("service: fail generate new auth id, %w", err)
 	}
-	result, err := service.Repository.findByEmail(
+	result, err := service.Repository.loginByEmail(
 		ctx,
 		user.Email,
 		authentication{
@@ -271,14 +304,13 @@ func (service *ServiceImpl) login(
 		},
 	)
 	if err != nil {
-		fmt.Println("service: ", err)
-		var authError authError
-		if errors.As(err, &authError) {
+		var appError apperror.AppError
+		if errors.As(err, &appError) {
 			return schema.Response[authResponse]{
 				Status: "fail",
-				Code:   authError.Code,
+				Code:   appError.Code,
 				Error: schema.Error{
-					Message: authError.Msg,
+					Message: appError.Message,
 				},
 			}, err
 		}
@@ -290,7 +322,7 @@ func (service *ServiceImpl) login(
 			},
 		}, err
 	}
-	err = bcrypt.CompareHashAndPassword([]byte(result.Password), []byte(user.Password))
+	err = bcrypt.CompareHashAndPassword([]byte(result.password), []byte(user.Password))
 	if err != nil {
 		return schema.Response[authResponse]{
 			Status: "fail",
@@ -301,10 +333,10 @@ func (service *ServiceImpl) login(
 		}, fmt.Errorf("service: comparing password failed, %w", err)
 	}
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomJWTClaims{
-		Id:       result.Id,
-		Email:    result.Email,
-		Fullname: result.Fullname,
-		Roles:    result.Roles,
+		Id:       result.id,
+		Email:    result.email,
+		Fullname: result.fullname,
+		Roles:    result.roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -325,11 +357,11 @@ func (service *ServiceImpl) login(
 		Status: "success",
 		Code:   http.StatusOK,
 		Data: authResponse{
-			User: userCreateResponse{
-				ID:       result.Id,
-				Email:    result.Email,
-				Fullname: result.Fullname,
-				Roles:    result.Roles,
+			User: registrationResponse{
+				ID:       result.id,
+				Email:    result.email,
+				Fullname: result.fullname,
+				Roles:    result.roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),

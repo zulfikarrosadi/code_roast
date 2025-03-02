@@ -13,8 +13,8 @@ import (
 )
 
 type Service interface {
-	register(context.Context, userCreateRequest) (schema.Response[authResponse], error)
-	login(context.Context, userLoginRequest) (schema.Response[authResponse], error)
+	register(context.Context, registrationRequest) (schema.Response[authResponse], error)
+	login(context.Context, loginRequest) (schema.Response[authResponse], error)
 	refreshToken(context.Context, string) (schema.Response[authResponse], error)
 }
 
@@ -101,7 +101,7 @@ func (api *ApiHandler) RefreshToken(c echo.Context) error {
 }
 
 func (api *ApiHandler) Login(c echo.Context) error {
-	user := new(userLoginRequest)
+	user := new(loginRequest)
 	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
@@ -211,7 +211,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 }
 
 func (api *ApiHandler) Register(c echo.Context) error {
-	user := new(userCreateRequest)
+	user := new(registrationRequest)
 	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
@@ -233,7 +233,7 @@ func (api *ApiHandler) Register(c echo.Context) error {
 			"fail to process your request, send corerct data and try again",
 		)
 	}
-	response, err := api.Service.register(ctx, userCreateRequest{
+	response, err := api.Service.register(ctx, registrationRequest{
 		Id:                   user.Id,
 		Fullname:             user.Fullname,
 		PasswordConfirmation: user.PasswordConfirmation,
