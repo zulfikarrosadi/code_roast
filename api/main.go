@@ -14,9 +14,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo-jwt/v4"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/zulfikarrosadi/code_roast/post"
 	"github.com/zulfikarrosadi/code_roast/subforum"
 	"github.com/zulfikarrosadi/code_roast/user"
 )
@@ -175,12 +176,17 @@ func main() {
 	subforumService := subforum.NewService(subforumRepository, v, cld)
 	subforumApi := subforum.NewApi(subforumService, logger)
 
+	postRepository := post.NewRepository(db)
+	postService := post.NewService(postRepository, v, cld)
+	postApi := post.NewApi(postService, logger)
 
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
 	r.GET("/refresh", userApi.RefreshToken)
 	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
+	r.POST("/posts", postApi.Create)
+	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
 	r.GET("/", func(c echo.Context) error {
 		token := c.Get("user").(*jwt.Token)
 
