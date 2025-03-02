@@ -17,9 +17,9 @@ import (
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/zulfikarrosadi/code_roast/auth"
 	"github.com/zulfikarrosadi/code_roast/post"
 	"github.com/zulfikarrosadi/code_roast/subforum"
-	"github.com/zulfikarrosadi/code_roast/user"
 )
 
 type Error struct {
@@ -116,7 +116,7 @@ func main() {
 			return false
 		},
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
-			return &user.CustomJWTClaims{}
+			return &auth.CustomJWTClaims{}
 		},
 		ErrorHandler: func(c echo.Context, err error) error {
 			if errors.Is(err, jwt.ErrTokenExpired) {
@@ -168,9 +168,9 @@ func main() {
 		panic("cloudnary fail to initiate")
 	}
 	v := validator.New()
-	userRepository := user.NewUserRepository(logger, db)
-	userService := user.NewUserService(userRepository, v)
-	userApi := user.NewApiHandler(logger, userService)
+	userRepository := auth.NewUserRepository(logger, db)
+	userService := auth.NewUserService(userRepository, v)
+	userApi := auth.NewApiHandler(logger, userService)
 
 	subforumRepository := subforum.NewRepository(db)
 	subforumService := subforum.NewService(subforumRepository, v, cld)
@@ -184,9 +184,9 @@ func main() {
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
 	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
+	r.POST("/subforums", subforumApi.Create, roles([]int{auth.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
-	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
+	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{auth.ROLE_ID_TAKE_DOWN_POST}))
 
 	e.Start("localhost:3000")
 }
@@ -196,7 +196,7 @@ func roles(requiredRoles []int) func(echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			token := c.Get("user").(*jwt.Token)
 
-			claims, ok := token.Claims.(*user.CustomJWTClaims)
+			claims, ok := token.Claims.(*auth.CustomJWTClaims)
 			if !ok {
 				return echo.NewHTTPError(http.StatusForbidden, "you don't have perimission to do this operation")
 			}
