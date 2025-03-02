@@ -187,21 +187,7 @@ func main() {
 	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
 	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
-	r.GET("/", func(c echo.Context) error {
-		token := c.Get("user").(*jwt.Token)
 
-		// Extract the claims from the token
-		claims, ok := token.Claims.(*user.CustomJWTClaims)
-		if !ok {
-			fmt.Println("token: ", token)
-		}
-		fmt.Println(claims.Email)
-		err := c.String(http.StatusOK, "ok")
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "error")
-		}
-		return nil
-	})
 	e.Start("localhost:3000")
 }
 
