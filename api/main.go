@@ -172,8 +172,9 @@ func main() {
 	userApi := user.NewApiHandler(logger, userService)
 
 	subforumRepository := subforum.NewRepository(db)
-	subforumService := subforum.NewService(subforumRepository, v)
-	subforumApi := subforum.NewApi(subforumService, cld, logger)
+	subforumService := subforum.NewService(subforumRepository, v, cld)
+	subforumApi := subforum.NewApi(subforumService, logger)
+
 
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)

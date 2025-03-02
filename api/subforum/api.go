@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/cloudinary/cloudinary-go/v2"
-	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	imagehelper "github.com/zulfikarrosadi/code_roast/image-helper"
 	"github.com/zulfikarrosadi/code_roast/schema"
 	"github.com/zulfikarrosadi/code_roast/user"
 )
@@ -23,7 +20,6 @@ type service interface {
 
 type ApiImpl struct {
 	service service
-	cld     *cloudinary.Cloudinary
 	*slog.Logger
 }
 
@@ -35,10 +31,9 @@ type subforumCreateRequest struct {
 	Banner      *multipart.FileHeader `form:"banner" validate:"required"`
 }
 
-func NewApi(service service, cld *cloudinary.Cloudinary, logger *slog.Logger) *ApiImpl {
+func NewApi(service service, logger *slog.Logger) *ApiImpl {
 	return &ApiImpl{
 		service: service,
-		cld:     cld,
 		Logger:  logger,
 	}
 }
