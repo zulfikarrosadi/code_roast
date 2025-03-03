@@ -32,13 +32,16 @@ type SubforumMedia struct {
 	Banner string `json:"banner"`
 }
 
-type subforumResponse struct {
+type subforumDetail struct {
 	Id            string `json:"id"`
 	Name          string `json:"name"`
 	Description   string `json:"description"`
-	UserId        string `json:"user_id"`
 	CreatedAt     int64  `json:"created_at"`
 	SubforumMedia `json:"subforum_media"`
+}
+
+type subforumResponse struct {
+	Subforum subforumDetail `json:"subforum"`
 }
 
 func NewService(repo repository, v *validator.Validate, cloudinaryInstance *cloudinary.Cloudinary) *ServiceImpl {
@@ -162,14 +165,15 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		Status: "success",
 		Code:   http.StatusCreated,
 		Data: subforumResponse{
-			UserId:      result.userId,
-			Id:          result.id,
-			Name:        result.name,
-			Description: result.description,
-			CreatedAt:   result.createdAt,
-			SubforumMedia: SubforumMedia{
-				Icon:   iconSecureUrl,
-				Banner: bannerSecureUrl,
+			Subforum: subforumDetail{
+				Id:          result.id,
+				Name:        result.name,
+				Description: result.description,
+				CreatedAt:   result.createdAt,
+				SubforumMedia: SubforumMedia{
+					Icon:   iconSecureUrl,
+					Banner: bannerSecureUrl,
+				},
 			},
 		},
 	}, nil
