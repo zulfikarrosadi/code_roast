@@ -193,7 +193,7 @@ func main() {
 	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
 	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
-	r.POST("moderators", moderatorApi.AddRoles)
+	r.POST("/moderators", moderatorApi.AddRoles)
 
 	e.Start("localhost:3000")
 }
