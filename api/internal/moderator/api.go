@@ -9,13 +9,12 @@ import (
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 
-	"github.com/zulfikarrosadi/code_roast/internal/auth"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type service interface {
-	addRoles(context.Context, string, updateRoleRequest) (schema.Response[UpdatePermissionResponse], error)
-	removeRoles(context.Context, string, updateRoleRequest) (schema.Response[UpdatePermissionResponse], error)
+	addRoles(context.Context, updateRoleRequest) (schema.Response[UpdatePermissionResponse], error)
+	removeRoles(context.Context, updateRoleRequest) (schema.Response[UpdatePermissionResponse], error)
 }
 
 type ApiImpl struct {
@@ -38,8 +37,8 @@ var (
 
 func (api *ApiImpl) AddRoles(c echo.Context) error {
 	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
-	roles := updateRoleRequest{}
-	err := c.Bind(&roles.RoleId)
+	data := updateRoleRequest{}
+	err := c.Bind(&data)
 	if err != nil {
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
 			slog.Int("status", http.StatusInternalServerError),
@@ -57,12 +56,7 @@ func (api *ApiImpl) AddRoles(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "fail to process your request, send correct data and try again")
 	}
 
-	claims, err := auth.GetUserFromContext(c)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusForbidden, "you don't have perimission to do this operation")
-	}
-
-	response, err := api.service.addRoles(ctx, claims.Id, roles)
+	response, err := api.service.addRoles(ctx, data)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
 			api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",

@@ -12,8 +12,8 @@ import (
 )
 
 type repository interface {
-	addRoles(context.Context, string, []int) (userAndRole, error)
-	removeRoles(context.Context, string, []int) (userAndRole, error)
+	addRoles(context.Context, updateRoleRequest) (userAndRole, error)
+	removeRoles(context.Context, updateRoleRequest) (userAndRole, error)
 }
 
 type serviceImpl struct {
@@ -29,7 +29,8 @@ func NewService(repository repository, v *validator.Validate) *serviceImpl {
 }
 
 type updateRoleRequest struct {
-	RoleId []int `json:"role_id" validate:"required"`
+	UserId string `json:"user_id" validate:"required"`
+	RoleId []int  `json:"role_id" validate:"required"`
 }
 
 type updateRoleResponse struct {
@@ -43,10 +44,9 @@ type UpdatePermissionResponse struct {
 
 func (service *serviceImpl) addRoles(
 	ctx context.Context,
-	userId string,
-	role updateRoleRequest,
+	data updateRoleRequest,
 ) (schema.Response[UpdatePermissionResponse], error) {
-	if err := service.v.Struct(role); err != nil {
+	if err := service.v.Struct(data); err != nil {
 		validationErrorDetail := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
 		return schema.Response[UpdatePermissionResponse]{
 			Status: "fail",
@@ -58,7 +58,7 @@ func (service *serviceImpl) addRoles(
 		}, fmt.Errorf("service: input validation error %w", err)
 	}
 
-	result, err := service.repository.addRoles(ctx, userId, role.RoleId)
+	result, err := service.repository.addRoles(ctx, data)
 	if err != nil {
 		var appError apperror.AppError
 		if errors.As(err, &appError) {
@@ -83,7 +83,7 @@ func (service *serviceImpl) addRoles(
 		Code:   http.StatusCreated,
 		Data: UpdatePermissionResponse{
 			User: updateRoleResponse{
-				UserId: userId,
+				UserId: data.UserId,
 				Roles:  result.roles,
 			},
 		},
@@ -92,10 +92,9 @@ func (service *serviceImpl) addRoles(
 
 func (service *serviceImpl) removeRoles(
 	ctx context.Context,
-	userId string,
-	role updateRoleRequest,
+	data updateRoleRequest,
 ) (schema.Response[UpdatePermissionResponse], error) {
-	if err := service.v.Struct(role); err != nil {
+	if err := service.v.Struct(data); err != nil {
 		validationErrorDetail := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
 		return schema.Response[UpdatePermissionResponse]{
 			Status: "fail",
@@ -106,7 +105,7 @@ func (service *serviceImpl) removeRoles(
 			},
 		}, fmt.Errorf("service: input validation error %w", err)
 	}
-	result, err := service.repository.removeRoles(ctx, userId, role.RoleId)
+	result, err := service.repository.removeRoles(ctx, data)
 	if err != nil {
 		var appError apperror.AppError
 		if errors.As(err, &appError) {
@@ -131,7 +130,7 @@ func (service *serviceImpl) removeRoles(
 		Code:   http.StatusOK,
 		Data: UpdatePermissionResponse{
 			User: updateRoleResponse{
-				UserId: userId,
+				UserId: data.UserId,
 				Roles:  result.roles,
 			},
 		},

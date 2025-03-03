@@ -37,14 +37,14 @@ type roles struct {
 
 func (repo *repositoryImpl) addRoles(
 	ctx context.Context,
-	userId string, roleId []int,
+	data updateRoleRequest,
 ) (userAndRole, error) {
 	insertQueryParams := []string{}
 	insertQueryValue := []interface{}{}
 
-	for _, role := range roleId {
+	for _, role := range data.RoleId {
 		insertQueryParams = append(insertQueryParams, "(?,?)")
-		insertQueryValue = append(insertQueryValue, userId, role)
+		insertQueryValue = append(insertQueryValue, data.UserId, role)
 	}
 	tx, err := repo.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -70,7 +70,7 @@ func (repo *repositoryImpl) addRoles(
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == DUPLICATE_CONSTRAINT_ERROR {
 			return userAndRole{}, apperror.New(http.StatusBadRequest, "This user already have that role", err)
 		}
-		return userAndRole{}, fmt.Errorf("repository: fail to add new role to user %s %w", userId, err)
+		return userAndRole{}, fmt.Errorf("repository: fail to add new role to user %s %w", data.UserId, err)
 	}
 	rowsAffectd, err := result.RowsAffected()
 	if err != nil {
@@ -88,7 +88,7 @@ func (repo *repositoryImpl) addRoles(
 		ON ur.role_id = r.id
 		WHERE ur.user_id = ?
 		`,
-		userId,
+		data.UserId,
 	)
 	userRoles := []roles{}
 	defer rows.Close()
@@ -110,7 +110,7 @@ func (repo *repositoryImpl) addRoles(
 	}
 
 	return userAndRole{
-		userId: userId,
+		userId: data.UserId,
 		roles:  userRoles,
 	}, nil
 }
@@ -118,8 +118,7 @@ func (repo *repositoryImpl) addRoles(
 // batch query to delete user role consecutively with transaction
 func (repo *repositoryImpl) removeRoles(
 	ctx context.Context,
-	userId string,
-	roleId []int,
+	data updateRoleRequest,
 ) (userAndRole, error) {
 	type deleteQuery struct {
 		query string
@@ -127,10 +126,10 @@ func (repo *repositoryImpl) removeRoles(
 	}
 	deleteQueries := []deleteQuery{}
 
-	for _, role := range roleId {
+	for _, role := range data.RoleId {
 		dq := deleteQuery{
 			query: "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?",
-			value: []interface{}{userId, role},
+			value: []interface{}{data.UserId, role},
 		}
 		deleteQueries = append(deleteQueries, dq)
 	}
@@ -176,7 +175,7 @@ func (repo *repositoryImpl) removeRoles(
 		ON ur.role_id = r.id
 		WHERE ur.user_id = ?
 		`,
-		userId,
+		data.UserId,
 	)
 	userRoles := []roles{}
 	defer rows.Close()
@@ -198,7 +197,7 @@ func (repo *repositoryImpl) removeRoles(
 	}
 
 	return userAndRole{
-		userId: userId,
+		userId: data.UserId,
 		roles:  userRoles,
 	}, nil
 }
