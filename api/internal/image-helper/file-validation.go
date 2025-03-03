@@ -12,6 +12,17 @@ import (
 )
 
 func IsImage(file multipart.File) (string, error) {
+	// Save the original position
+	_, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return "", fmt.Errorf("failed to get current file position: %w", err)
+	}
+
+	// Reset to beginning for signature check
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to reset file pointer: %w", err)
+	}
+
 	signature, err := getFileSignature(file, 512)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file signature: %w", err)
@@ -22,14 +33,19 @@ func IsImage(file multipart.File) (string, error) {
 		return "", err
 	}
 
-	// 2. Reset file pointer to the beginning for image.DecodeConfig
-	if _, err := file.Seek(0, io.SeekStart); err != nil { // Crucial: Reset the file pointer
+	// Reset file pointer again for image.DecodeConfig
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return "", fmt.Errorf("failed to reset file pointer: %w", err)
 	}
 
-	// 3. image.DecodeConfig (now reads from the beginning of the file)
+	// Try to decode the image configuration
 	if _, _, err := image.DecodeConfig(file); err != nil {
 		return "", fmt.Errorf("image.DecodeConfig failed: %w", err)
+	}
+
+	// Reset the file pointer to the beginning before returning
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to reset file pointer: %w", err)
 	}
 
 	return format, nil
