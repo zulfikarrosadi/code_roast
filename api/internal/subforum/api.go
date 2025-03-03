@@ -25,10 +25,10 @@ type ApiImpl struct {
 
 type subforumCreateRequest struct {
 	UserId      string
-	Name        string                `form:"name" validate:"required"`
-	Description string                `form:"description" validate:"required"`
-	Icon        *multipart.FileHeader `form:"icon" validate:"required"`
-	Banner      *multipart.FileHeader `form:"banner" validate:"required"`
+	Name        string                `validate:"required"`
+	Description string                `validate:"required"`
+	Icon        *multipart.FileHeader `validate:"required"`
+	Banner      *multipart.FileHeader `validate:"required"`
 }
 
 func NewApi(service service, logger *slog.Logger) *ApiImpl {
@@ -51,7 +51,10 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	}
 
 	newSubforum := subforumCreateRequest{}
-	err := c.Bind(&newSubforum)
+	newSubforum.UserId = user.Id
+	newSubforum.Name = c.FormValue("name")
+	newSubforum.Description = c.FormValue("description")
+	subForumIcon, err := c.FormFile("icon")
 	if err != nil {
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
 			slog.Int("status", http.StatusBadRequest),
@@ -66,9 +69,35 @@ func (api *ApiImpl) Create(c echo.Context) error {
 			slog.String("error", err.Error()),
 			slog.String("trace", string(debug.Stack())),
 		)
-		return echo.NewHTTPError(http.StatusBadRequest, "fail to create new subforum, bind error")
+		if err == http.ErrMissingFile {
+			return echo.NewHTTPError(http.StatusBadRequest, "failed to create new sub, forum. missing icon file")
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, "something went wrong, enter correct information and please try again")
+	}
+	subForumBanner, err := c.FormFile("banner")
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusInternalServerError),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		if err == http.ErrMissingFile {
+			return echo.NewHTTPError(http.StatusBadRequest, "failed to create new sub, forum. missing banner file")
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, "something went wrong, enter correct information and please try again")
 	}
 	newSubforum.UserId = user.Id
+	newSubforum.Icon = subForumIcon
+	newSubforum.Banner = subForumBanner
+
 	response, err := api.service.create(c.Request().Context(), newSubforum)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {

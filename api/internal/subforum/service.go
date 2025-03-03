@@ -27,12 +27,18 @@ type ServiceImpl struct {
 	cld  *cloudinary.Cloudinary
 }
 
+type SubforumMedia struct {
+	Icon   string `json:"icon"`
+	Banner string `json:"banner"`
+}
+
 type subforumResponse struct {
-	Id          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	UserId      string `json:"user_id"`
-	CreatedAt   int64  `json:"created_at"`
+	Id            string `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	UserId        string `json:"user_id"`
+	CreatedAt     int64  `json:"created_at"`
+	SubforumMedia `json:"subforum_media"`
 }
 
 func NewService(repo repository, v *validator.Validate, cloudinaryInstance *cloudinary.Cloudinary) *ServiceImpl {
@@ -161,6 +167,10 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 			Name:        result.name,
 			Description: result.description,
 			CreatedAt:   result.createdAt,
+			SubforumMedia: SubforumMedia{
+				Icon:   iconSecureUrl,
+				Banner: bannerSecureUrl,
+			},
 		},
 	}, nil
 }
