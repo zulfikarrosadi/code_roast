@@ -90,6 +90,7 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 		Id:       user.id,
 		Email:    user.email,
 		Fullname: user.fullname,
+		Roles:    user.roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
