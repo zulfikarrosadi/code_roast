@@ -129,10 +129,8 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		}
 
 		media = append(media, postMedia{
-			Id:        mediaId.String(),
-			MediaUrl:  mediaUpload.SecureURL,
-			PostId:    postId.String(),
-			CreatedAt: time.Now().Unix(),
+			Id:       mediaId.String(),
+			MediaUrl: mediaUpload.SecureURL,
 		})
 	}
 
