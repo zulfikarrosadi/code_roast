@@ -13,12 +13,13 @@ import (
 	"github.com/google/uuid"
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
 	"github.com/zulfikarrosadi/code_roast/schema"
+	"github.com/zulfikarrosadi/code_roast/user"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Repository interface {
-	register(context.Context, user, authentication) (publicUserData, error)
-	loginByEmail(context.Context, string, authentication) (user, error)
+	register(context.Context, user.User, authentication) (publicUserData, error)
+	loginByEmail(context.Context, string, authentication) (user.User, error)
 	findRefreshToken(context.Context, string) (publicUserData, error)
 }
 
@@ -35,10 +36,10 @@ func NewUserService(repo Repository, v *validator.Validate) *ServiceImpl {
 }
 
 type CustomJWTClaims struct {
-	Id       string  `json:"id"`
-	Email    string  `json:"email"`
-	Fullname string  `json:"fullname"`
-	Roles    []roles `json:"roles"`
+	Id       string       `json:"id"`
+	Email    string       `json:"email"`
+	Fullname string       `json:"fullname"`
+	Roles    []user.Roles `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -59,10 +60,10 @@ type loginRequest struct {
 }
 
 type registrationResponse struct {
-	ID       string  `json:"id"`
-	Email    string  `json:"email"`
-	Fullname string  `json:"fullname"`
-	Roles    []roles `json:"roles"`
+	ID       string       `json:"id"`
+	Email    string       `json:"email"`
+	Fullname string       `json:"fullname"`
+	Roles    []user.Roles `json:"roles"`
 }
 
 // we need this to standarize auth resposne
@@ -182,12 +183,12 @@ func (service *ServiceImpl) register(
 
 	user, err := service.Repository.register(
 		ctx,
-		user{
-			id:        newUserId.String(),
-			fullname:  newUser.Fullname,
-			email:     newUser.Email,
-			password:  string(hashedPassword),
-			createdAt: time.Now().Unix(),
+		user.User{
+			Id:        newUserId.String(),
+			Fullname:  newUser.Fullname,
+			Email:     newUser.Email,
+			Password:  string(hashedPassword),
+			CreatedAt: time.Now().Unix(),
 		},
 		authentication{
 			id:           authenticationId.String(),
@@ -322,7 +323,7 @@ func (service *ServiceImpl) login(
 			},
 		}, err
 	}
-	err = bcrypt.CompareHashAndPassword([]byte(result.password), []byte(user.Password))
+	err = bcrypt.CompareHashAndPassword([]byte(result.Password), []byte(user.Password))
 	if err != nil {
 		return schema.Response[authResponse]{
 			Status: "fail",
@@ -333,10 +334,10 @@ func (service *ServiceImpl) login(
 		}, fmt.Errorf("service: comparing password failed, %w", err)
 	}
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, CustomJWTClaims{
-		Id:       result.id,
-		Email:    result.email,
-		Fullname: result.fullname,
-		Roles:    result.roles,
+		Id:       result.Id,
+		Email:    result.Email,
+		Fullname: result.Fullname,
+		Roles:    result.Roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -358,10 +359,10 @@ func (service *ServiceImpl) login(
 		Code:   http.StatusOK,
 		Data: authResponse{
 			User: registrationResponse{
-				ID:       result.id,
-				Email:    result.email,
-				Fullname: result.fullname,
-				Roles:    result.roles,
+				ID:       result.Id,
+				Email:    result.Email,
+				Fullname: result.Fullname,
+				Roles:    result.Roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),

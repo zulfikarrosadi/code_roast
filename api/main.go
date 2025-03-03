@@ -20,6 +20,7 @@ import (
 	"github.com/zulfikarrosadi/code_roast/auth"
 	"github.com/zulfikarrosadi/code_roast/post"
 	"github.com/zulfikarrosadi/code_roast/subforum"
+	"github.com/zulfikarrosadi/code_roast/user"
 )
 
 type Error struct {
@@ -184,9 +185,9 @@ func main() {
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
 	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create, roles([]int{auth.ROLE_ID_CREATE_SUBFORUM}))
+	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
-	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{auth.ROLE_ID_TAKE_DOWN_POST}))
+	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
 
 	e.Start("localhost:3000")
 }

@@ -10,21 +10,13 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	apperror "github.com/zulfikarrosadi/code_roast/app-error"
+	"github.com/zulfikarrosadi/code_roast/user"
 )
 
 type (
 	RepositoryImpl struct {
 		*slog.Logger
 		*sql.DB
-	}
-
-	user struct {
-		id        string
-		fullname  string
-		email     string
-		password  string
-		createdAt int64
-		roles     []roles
 	}
 
 	// these data is populated by system
@@ -37,28 +29,16 @@ type (
 		userId       string
 	}
 
-	roles struct {
-		Id   int    `json:"id"`
-		Name string `json:"name"`
-	}
-
 	publicUserData struct {
 		id       string
 		fullname string
 		email    string
-		roles    []roles
+		roles    []user.Roles
 	}
 )
 
 const (
 	DUPLICATE_CONSTRAINT_ERROR = 1062
-	ROLE_ID_CREATE_SUBFORUM    = 1
-	ROLE_ID_UPDATE_SUBFORUM    = 2
-	ROLE_ID_DELETE_SUBFORUM    = 3
-	ROLE_ID_MEMBER             = 4
-	ROLE_ID_DELETE_POST        = 5
-	ROLE_ID_APPROVE_POST       = 6
-	ROLE_ID_TAKE_DOWN_POST     = 7
 )
 
 func NewUserRepository(logger *slog.Logger, db *sql.DB) *RepositoryImpl {
@@ -69,7 +49,7 @@ func NewUserRepository(logger *slog.Logger, db *sql.DB) *RepositoryImpl {
 }
 
 func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) (publicUserData, error) {
-	user := new(publicUserData)
+	newPublicUserData := new(publicUserData)
 	tx, err := repo.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: transaction begin error: %w", err)
@@ -93,7 +73,7 @@ func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) 
 		WHERE refresh_token = ?
 		`,
 		token,
-	).Scan(&user.email, &user.id, &user.fullname)
+	).Scan(&newPublicUserData.email, &newPublicUserData.id, &newPublicUserData.fullname)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return publicUserData{}, errors.New("refresh token not found")
@@ -111,34 +91,34 @@ func (repo *RepositoryImpl) findRefreshToken(ctx context.Context, token string) 
 		ON ur.role_id = r.id
 		WHERE u.id = ?;
 		`,
-		user.id,
+		newPublicUserData.id,
 	)
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: role lookup fail %w", err)
 	}
 	defer rows.Close()
 
-	userRoles := []roles{}
+	userRoles := []user.Roles{}
 	for rows.Next() {
-		role := roles{}
+		role := user.Roles{}
 		rows.Scan(&role.Id, &role.Name)
 		userRoles = append(userRoles, role)
 	}
-	user.roles = userRoles
+	newPublicUserData.roles = userRoles
 	err = tx.Commit()
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("failed to commit transaction %w", err)
 	}
-	return *user, nil
+	return *newPublicUserData, nil
 }
 
 // this method is not only find user by email, but inserting user auth details in db at once
-func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth authentication) (user, error) {
-	userFromDb := new(user)
+func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth authentication) (user.User, error) {
+	userFromDb := new(user.User)
 
 	tx, err := repo.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return user{}, fmt.Errorf("repository: transaction begin error: %w", err)
+		return user.User{}, fmt.Errorf("repository: transaction begin error: %w", err)
 	}
 	defer func() {
 		// handle panic in extreamely rare case condition e.g driver fails
@@ -154,13 +134,13 @@ func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth
 		ctx,
 		"SELECT id, fullname, password, email FROM users WHERE email = ?",
 		email,
-	).Scan(&userFromDb.id, &userFromDb.fullname, &userFromDb.password, &userFromDb.email)
+	).Scan(&userFromDb.Id, &userFromDb.Fullname, &userFromDb.Password, &userFromDb.Email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// we use apperror to make it easier to directly handle this case
-			return user{}, apperror.New(http.StatusBadRequest, "email or password is incorrect", err)
+			return user.User{}, apperror.New(http.StatusBadRequest, "email or password is incorrect", err)
 		}
-		return user{}, fmt.Errorf("repository: db query scan failed, %w", err)
+		return user.User{}, fmt.Errorf("repository: db query scan failed, %w", err)
 	}
 	_, err = tx.ExecContext(
 		ctx,
@@ -170,10 +150,10 @@ func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth
 		auth.lastLogin,
 		auth.remoteIP,
 		auth.agent,
-		userFromDb.id,
+		userFromDb.Id,
 	)
 	if err != nil {
-		return user{}, fmt.Errorf("repository: insert new user auth credentials failed %w", err)
+		return user.User{}, fmt.Errorf("repository: insert new user auth credentials failed %w", err)
 	}
 	rows, err := tx.QueryContext(
 		ctx,
@@ -189,31 +169,31 @@ func (repo *RepositoryImpl) loginByEmail(ctx context.Context, email string, auth
 		email,
 	)
 	if err != nil {
-		return user{}, fmt.Errorf("repository: role lookup fail %w", err)
+		return user.User{}, fmt.Errorf("repository: role lookup fail %w", err)
 	}
 	defer rows.Close()
 
-	userRoles := []roles{}
+	userRoles := []user.Roles{}
 	for rows.Next() {
-		role := roles{}
+		role := user.Roles{}
 		rows.Scan(&role.Id, &role.Name)
 		userRoles = append(userRoles, role)
 	}
 	err = tx.Commit()
 	if err != nil {
-		return user{}, fmt.Errorf("failed to commit transaction %w", err)
+		return user.User{}, fmt.Errorf("failed to commit transaction %w", err)
 	}
 
-	return user{
-		id:       userFromDb.id,
-		fullname: userFromDb.fullname,
-		email:    userFromDb.email,
-		password: userFromDb.password,
-		roles:    userRoles,
+	return user.User{
+		Id:       userFromDb.Id,
+		Fullname: userFromDb.Fullname,
+		Email:    userFromDb.Email,
+		Password: userFromDb.Password,
+		Roles:    userRoles,
 	}, nil
 }
 
-func (repository *RepositoryImpl) register(ctx context.Context, user user, auth authentication) (publicUserData, error) {
+func (repository *RepositoryImpl) register(ctx context.Context, newUser user.User, auth authentication) (publicUserData, error) {
 	tx, err := repository.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: transaction begin error: %w", err)
@@ -231,11 +211,11 @@ func (repository *RepositoryImpl) register(ctx context.Context, user user, auth 
 	_, err = tx.ExecContext(
 		ctx,
 		"INSERT INTO users (id, fullname, email, password, created_at) VALUES (?,?,?,?,?)",
-		user.id,
-		user.fullname,
-		user.email,
-		user.password,
-		user.createdAt,
+		newUser.Id,
+		newUser.Fullname,
+		newUser.Email,
+		newUser.Password,
+		newUser.CreatedAt,
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
@@ -252,7 +232,7 @@ func (repository *RepositoryImpl) register(ctx context.Context, user user, auth 
 		auth.lastLogin,
 		auth.remoteIP,
 		auth.agent,
-		user.id,
+		newUser.Id,
 	)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
@@ -264,8 +244,8 @@ func (repository *RepositoryImpl) register(ctx context.Context, user user, auth 
 	_, err = tx.ExecContext(
 		ctx,
 		"INSERT INTO user_roles (user_id, role_id) VALUES(?,?)",
-		user.id,
-		ROLE_ID_MEMBER,
+		newUser.Id,
+		user.ROLE_ID_MEMBER,
 	)
 	if err != nil {
 		return publicUserData{}, fmt.Errorf("repository: attaching new role to new user failed %w", err)
@@ -275,12 +255,12 @@ func (repository *RepositoryImpl) register(ctx context.Context, user user, auth 
 		return publicUserData{}, fmt.Errorf("repository: failed to commit transaction: %w", err)
 	}
 	return publicUserData{
-		id:       user.id,
-		fullname: user.fullname,
-		email:    user.email,
-		roles: []roles{
-			roles{
-				Id:   ROLE_ID_MEMBER,
+		id:       newUser.Id,
+		fullname: newUser.Fullname,
+		email:    newUser.Email,
+		roles: []user.Roles{
+			{
+				Id:   user.ROLE_ID_MEMBER,
 				Name: "member",
 			},
 		},

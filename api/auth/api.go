@@ -30,6 +30,20 @@ func NewApiHandler(logger *slog.Logger, service Service) *ApiHandler {
 	}
 }
 
+func GetUserFromContext(c echo.Context) (*CustomJWTClaims, error) {
+	userData := c.Get("user")
+	if userData == nil {
+		return nil, echo.NewHTTPError(401, "User not found in context")
+	}
+
+	claims, ok := userData.(*CustomJWTClaims)
+	if !ok {
+		return nil, echo.NewHTTPError(401, "Invalid user claims")
+	}
+
+	return claims, nil
+}
+
 const (
 	WEEK_IN_SECOND     = 604_800
 	REQUEST_ID_KEY     = "REQUEST_ID"
