@@ -37,7 +37,7 @@ type subforumDetail struct {
 	Name          string `json:"name"`
 	Description   string `json:"description"`
 	CreatedAt     int64  `json:"created_at"`
-	SubforumMedia `json:"subforum_media"`
+	SubforumMedia `json:"media"`
 }
 
 type subforumResponse struct {
