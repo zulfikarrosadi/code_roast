@@ -8,8 +8,10 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/auth"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
@@ -38,9 +40,15 @@ var (
 
 func (api *ApiImpl) Create(c echo.Context) error {
 	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	token := c.Get("user").(*jwt.Token)
+	user, ok := token.Claims.(*auth.CustomJWTClaims)
+	if !ok {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Please use correct user credential and try again later")
+	}
 
 	newPost := postCreateRequest{}
-	if err := c.Bind(&newPost); err != nil {
+	media, err := c.MultipartForm()
+	if err != nil {
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
 			slog.Int("status", http.StatusInternalServerError),
 			slog.Group("request",
@@ -54,9 +62,12 @@ func (api *ApiImpl) Create(c echo.Context) error {
 			slog.String("error", err.Error()),
 			slog.String("trace", string(debug.Stack())),
 		)
-		return echo.NewHTTPError(http.StatusBadRequest, "fail to process your request, send correct data and try again")
+		return echo.NewHTTPError(http.StatusInternalServerError, "fail to process your request, failed to open post media files")
 	}
 
+	newPost.PostMedia = media.File["post_media"]
+	newPost.userId = user.Id
+	newPost.Caption = c.FormValue("caption")
 	response, err := api.service.create(ctx, newPost)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
