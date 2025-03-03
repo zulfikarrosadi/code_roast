@@ -10,9 +10,9 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	imagehelper "github.com/zulfikarrosadi/code_roast/image-helper"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	imagehelper "github.com/zulfikarrosadi/code_roast/internal/image-helper"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type repository interface {

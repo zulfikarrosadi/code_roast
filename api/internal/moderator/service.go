@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type repository interface {
@@ -19,6 +19,13 @@ type repository interface {
 type serviceImpl struct {
 	repository
 	v *validator.Validate
+}
+
+func NewService(repository repository, v *validator.Validate) *serviceImpl {
+	return &serviceImpl{
+		repository: repository,
+		v:          v,
+	}
 }
 
 type updateRoleRequest struct {

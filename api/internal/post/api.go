@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type service interface {

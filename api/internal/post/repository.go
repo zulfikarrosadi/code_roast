@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 )
 
 type RepositoryImpl struct {

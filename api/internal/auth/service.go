@@ -11,9 +11,9 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/schema"
-	"github.com/zulfikarrosadi/code_roast/user"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 	"golang.org/x/crypto/bcrypt"
 )
 

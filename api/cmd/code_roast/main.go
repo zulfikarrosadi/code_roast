@@ -17,10 +17,11 @@ import (
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/zulfikarrosadi/code_roast/auth"
-	"github.com/zulfikarrosadi/code_roast/post"
-	"github.com/zulfikarrosadi/code_roast/subforum"
-	"github.com/zulfikarrosadi/code_roast/user"
+	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	"github.com/zulfikarrosadi/code_roast/internal/moderator"
+	"github.com/zulfikarrosadi/code_roast/internal/post"
+	"github.com/zulfikarrosadi/code_roast/internal/subforum"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 )
 
 type Error struct {
@@ -41,7 +42,7 @@ const (
 
 func main() {
 	e := echo.New()
-	err := godotenv.Load()
+	err := godotenv.Load("../../config/.env")
 	if err != nil {
 		panic("env not loaded")
 	}
@@ -181,6 +182,10 @@ func main() {
 	postService := post.NewService(postRepository, v, cld)
 	postApi := post.NewApi(postService, logger)
 
+	moderatorRepository := moderator.NewRepository(db)
+	moderatorService := moderator.NewService(moderatorRepository, v)
+	moderatorApi := moderator.NewApi(moderatorService, logger)
+
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
@@ -188,6 +193,7 @@ func main() {
 	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
 	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
+	r.POST("moderators", moderatorApi.AddRoles)
 
 	e.Start("localhost:3000")
 }

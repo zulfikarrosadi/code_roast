@@ -9,8 +9,8 @@ import (
 	"net/http"
 
 	"github.com/go-sql-driver/mysql"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/user"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 )
 
 type (

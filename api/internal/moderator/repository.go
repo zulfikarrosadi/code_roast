@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 )
 
 const (
@@ -18,6 +18,12 @@ const (
 
 type repositoryImpl struct {
 	db *sql.DB
+}
+
+func NewRepository(db *sql.DB) *repositoryImpl {
+	return &repositoryImpl{
+		db: db,
+	}
 }
 
 type userAndRole struct {
@@ -191,5 +197,8 @@ func (repo *repositoryImpl) removeRoles(
 		return userAndRole{}, fmt.Errorf("failed to commit transaction %w", err)
 	}
 
-	return userAndRole{}, nil
+	return userAndRole{
+		userId: userId,
+		roles:  userRoles,
+	}, nil
 }

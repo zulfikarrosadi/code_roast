@@ -7,10 +7,10 @@ import (
 	"runtime/debug"
 
 	"github.com/labstack/echo/v4"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 
-	"github.com/zulfikarrosadi/code_roast/auth"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type service interface {
@@ -23,13 +23,20 @@ type ApiImpl struct {
 	*slog.Logger
 }
 
+func NewApi(service service, logger *slog.Logger) *ApiImpl {
+	return &ApiImpl{
+		service: service,
+		Logger:  logger,
+	}
+}
+
 type REQUEST_ID string
 
 var (
 	REQUEST_ID_KEY REQUEST_ID = "REQUEST_ID"
 )
 
-func (api *ApiImpl) addRoles(c echo.Context) error {
+func (api *ApiImpl) AddRoles(c echo.Context) error {
 	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
 	roles := updateRoleRequest{}
 	err := c.Bind(&roles.RoleId)
