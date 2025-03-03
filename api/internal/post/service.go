@@ -39,8 +39,8 @@ func NewService(repo repository, v *validator.Validate, cld *cloudinary.Cloudina
 
 type postCreateRequest struct {
 	userId    string
-	Caption   string                  `form:"caption" validate:"required"`
-	PostMedia []*multipart.FileHeader `form:"post_media" validate:"required,min=1,max10"`
+	Caption   string                  `validate:"required"`
+	PostMedia []*multipart.FileHeader `validate:"required,min=1,max=10"`
 }
 
 type postCreateResponse struct {
@@ -58,18 +58,38 @@ type postResponse struct {
 func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) (schema.Response[postResponse], error) {
 	err := service.v.Struct(data)
 	if err != nil {
-		return schema.Response[postResponse]{}, fmt.Errorf("service: create post validation error %w", err)
+		validationError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
+		return schema.Response[postResponse]{
+			Status: "fail",
+			Code:   http.StatusBadRequest,
+			Error: schema.Error{
+				Message: apperror.VALIDATION_ERROR,
+				Details: validationError,
+			},
+		}, fmt.Errorf("service: create post validation error %w", err)
 	}
 	postId, err := uuid.NewV7()
 	if err != nil {
-		return schema.Response[postResponse]{}, fmt.Errorf("service: fail to generate post uuid %w", err)
+		return schema.Response[postResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "something went wrong, please try again later",
+			},
+		}, fmt.Errorf("service: fail to generate post uuid %w", err)
 	}
 
 	var media []postMedia
 	for _, item := range data.PostMedia {
 		mediaId, err := uuid.NewV7()
 		if err != nil {
-			return schema.Response[postResponse]{}, fmt.Errorf("service: fail to generate post media uuid %w", err)
+			return schema.Response[postResponse]{
+				Status: "fail",
+				Code:   http.StatusInternalServerError,
+				Error: schema.Error{
+					Message: "something went wrong, please try again later",
+				},
+			}, fmt.Errorf("service: fail to generate post media uuid %w", err)
 		}
 		postMediaSrc, err := item.Open()
 		if err != nil {
@@ -125,7 +145,13 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		postMedia: media,
 	})
 	if err != nil {
-		return schema.Response[postResponse]{}, err
+		return schema.Response[postResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "failed to upload new post, enter correct information and try again",
+			},
+		}, err
 	}
 	return schema.Response[postResponse]{
 		Status: "success",
