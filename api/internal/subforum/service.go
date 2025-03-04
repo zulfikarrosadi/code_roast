@@ -16,8 +16,8 @@ import (
 )
 
 type repository interface {
-	create(context.Context, subforum) (subforum, error)
-	findByName(context.Context, string) ([]subforum, error)
+	create(context.Context, Subforum) (Subforum, error)
+	findByName(context.Context, string) ([]Subforum, error)
 	deleteById(context.Context, string, string) error
 }
 
@@ -148,14 +148,14 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		return schema.Response[subforumResponse]{}, fmt.Errorf("service: fail to generate subforum uuid v7 %w", err)
 	}
 
-	result, err := service.repo.create(ctx, subforum{
-		id:          subForumId.String(),
-		name:        data.Name,
-		description: data.Description,
-		icon:        iconSecureUrl,
-		banner:      bannerSecureUrl,
-		userId:      data.UserId,
-		createdAt:   time.Now().Unix(),
+	result, err := service.repo.create(ctx, Subforum{
+		Id:          subForumId.String(),
+		Name:        data.Name,
+		Description: data.Description,
+		Icon:        iconSecureUrl,
+		Banner:      bannerSecureUrl,
+		UserId:      data.UserId,
+		CreatedAt:   time.Now().Unix(),
 	})
 	if err != nil {
 		return schema.Response[subforumResponse]{}, err
@@ -166,10 +166,10 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		Code:   http.StatusCreated,
 		Data: subforumResponse{
 			Subforum: subforumDetail{
-				Id:          result.id,
-				Name:        result.name,
-				Description: result.description,
-				CreatedAt:   result.createdAt,
+				Id:          result.Id,
+				Name:        result.Name,
+				Description: result.Description,
+				CreatedAt:   result.CreatedAt,
 				SubforumMedia: SubforumMedia{
 					Icon:   iconSecureUrl,
 					Banner: bannerSecureUrl,
