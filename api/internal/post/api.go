@@ -18,6 +18,7 @@ import (
 type service interface {
 	create(context.Context, postCreateRequest) (schema.Response[postResponse], error)
 	takeDown(context.Context, string, sql.NullInt64) (schema.Response[postResponse], error)
+	like(context.Context, likeCreateRequest) (schema.Response[likeResponse], error)
 }
 
 type ApiImpl struct {
@@ -139,6 +140,40 @@ func (api *ApiImpl) Create(c echo.Context) error {
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
 		)
+	}
+	return nil
+}
+
+func (api *ApiImpl) Like(c echo.Context) error {
+	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	user, err := auth.GetUserFromContext(c)
+	if err != nil {
+		return echo.ErrUnauthorized
+	}
+	data := likeCreateRequest{}
+	if err = c.Bind(&data); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to like this post. Send correct information and please try again later")
+	}
+	data.UserId = user.Id
+
+	response, err := api.service.like(ctx, data)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+	}
+	if err = c.JSON(response.Code, response); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 	return nil
 }

@@ -190,3 +190,57 @@ func (repo *RepositoryImpl) takeDown(ctx context.Context, postId string, updated
 	}
 	return nil
 }
+
+type newLike struct {
+	userId    string
+	postId    string
+	createdAt int64
+}
+
+func (repo *RepositoryImpl) like(
+	ctx context.Context,
+	data newLike,
+) (int, error) {
+	tx, err := repo.DB.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("repository: failed to begin transaction %w", err)
+	}
+	defer func() {
+		// handle panic for extream case like driver fails
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	rows, err := tx.ExecContext(
+		ctx,
+		"INSERT INTO likes (post_id, user_id, created_at)  VALUES (?,?,?)",
+		data.postId,
+		data.userId,
+		data.createdAt,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("repository: failed to add new like to post %w", err)
+	}
+	rowsAffected, err := rows.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		return 0, fmt.Errorf("repository: failed to add new like (rows affected 0) %w", err)
+	}
+	type newLike struct {
+		count int
+	}
+	likeCount := &newLike{}
+	err = tx.QueryRowContext(
+		ctx,
+		"SELECT COUNT(post_id) FROM likes WHERE post_id = ?",
+		data.postId,
+	).Scan(&likeCount.count)
+	if err != nil {
+		return 0, fmt.Errorf("repository: failed to get likes count, %w", err)
+	}
+	fmt.Println(*likeCount)
+	return likeCount.count, nil
+}

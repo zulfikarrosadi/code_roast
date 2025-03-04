@@ -192,6 +192,7 @@ func main() {
 	r.GET("/refresh", userApi.RefreshToken)
 	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	r.POST("/posts", postApi.Create)
+	r.POST("/posts/:id/likes", postApi.Like)
 	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
 	r.POST("/moderators", moderatorApi.AddRoles)
 

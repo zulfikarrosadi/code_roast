@@ -23,6 +23,7 @@ import (
 type repository interface {
 	create(context.Context, post) (createPostResult, error)
 	takeDown(context.Context, string, sql.NullInt64) error
+	like(context.Context, newLike) (int, error)
 }
 
 type serviceImpl struct {
@@ -208,6 +209,62 @@ func (service *serviceImpl) takeDown(ctx context.Context, postId string, updated
 			Post: postCreateResponse{
 				Id:        postId,
 				UpdatedAt: updatedAt.Int64,
+			},
+		},
+	}, nil
+}
+
+type likeCreateResponse struct {
+	PostId    string `json:"id"`
+	LikeCount int    `json:"like_count"`
+}
+
+type likeCreateRequest struct {
+	UserId string
+	PostId string `param:"id" validate:"required"`
+}
+
+type likeResponse struct {
+	Post likeCreateResponse `json:"post"`
+}
+
+func (service *serviceImpl) like(
+	ctx context.Context,
+	data likeCreateRequest,
+) (schema.Response[likeResponse], error) {
+	err := service.v.Struct(data)
+	if err != nil {
+		validationError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
+		return schema.Response[likeResponse]{
+			Status: "fail",
+			Code:   http.StatusBadRequest,
+			Error: schema.Error{
+				Message: apperror.VALIDATION_ERROR,
+				Details: validationError,
+			},
+		}, fmt.Errorf("service: error input")
+	}
+	likeCount, err := service.repo.like(ctx, newLike{
+		userId:    data.UserId,
+		postId:    data.PostId,
+		createdAt: time.Now().Unix(),
+	})
+	if err != nil {
+		return schema.Response[likeResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "failed to like this post, please try again later",
+			},
+		}, err
+	}
+	return schema.Response[likeResponse]{
+		Status: "success",
+		Code:   http.StatusCreated,
+		Data: likeResponse{
+			Post: likeCreateResponse{
+				PostId:    data.PostId,
+				LikeCount: likeCount,
 			},
 		},
 	}, nil
