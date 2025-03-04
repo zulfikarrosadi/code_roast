@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
@@ -31,12 +32,11 @@ func NewApiHandler(logger *slog.Logger, service Service) *ApiHandler {
 }
 
 func GetUserFromContext(c echo.Context) (*CustomJWTClaims, error) {
-	userData := c.Get("user")
+	userData := c.Get("user").(*jwt.Token)
 	if userData == nil {
 		return nil, echo.NewHTTPError(401, "User not found in context")
 	}
-
-	claims, ok := userData.(*CustomJWTClaims)
+	claims, ok := userData.Claims.(*CustomJWTClaims)
 	if !ok {
 		return nil, echo.NewHTTPError(401, "Invalid user claims")
 	}
