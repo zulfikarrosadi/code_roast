@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/subforum"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 )
 
 type RepositoryImpl struct {
@@ -28,12 +30,27 @@ type postMedia struct {
 }
 
 type post struct {
+	id         string
+	caption    string
+	createdAt  int64
+	updatedAt  sql.NullInt64
+	postMedia  []postMedia
+	userId     string
+	subforumId string
+}
+
+type newPost struct {
 	id        string
 	caption   string
+	mediaUrl  []string
 	createdAt int64
 	updatedAt sql.NullInt64
-	postMedia []postMedia
-	userId    string
+	user      user.User
+	subforum  subforum.Subforum
+}
+
+type createPostResult struct {
+	post newPost
 }
 
 const (
@@ -42,7 +59,10 @@ const (
 	POST_STATUS_TAKE_DOWN = "take_down"
 )
 
-func (repo *RepositoryImpl) create(ctx context.Context, data post) (post, error) {
+func (repo *RepositoryImpl) create(
+	ctx context.Context,
+	data post,
+) (createPostResult, error) {
 	postMediaValue := []string{}
 	postMediaArgs := []interface{}{}
 	var insertPostMediaQuery string
@@ -57,7 +77,7 @@ func (repo *RepositoryImpl) create(ctx context.Context, data post) (post, error)
 
 	tx, err := repo.DB.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return post{}, fmt.Errorf("repository: failed to begin transaction %w", err)
+		return createPostResult{}, fmt.Errorf("repository: failed to begin transaction %w", err)
 	}
 	defer func() {
 		if p := recover(); p != nil {
@@ -70,11 +90,11 @@ func (repo *RepositoryImpl) create(ctx context.Context, data post) (post, error)
 
 	_, err = tx.ExecContext(
 		ctx,
-		"INSERT INTO posts (id, caption, created_at, user_id) VALUES (?,?,?,?)",
-		data.id, data.caption, data.createdAt, data.userId,
+		"INSERT INTO posts (id, caption, created_at, user_id, subforum_id) VALUES (?,?,?,?,?)",
+		data.id, data.caption, data.createdAt, data.userId, data.subforumId,
 	)
 	if err != nil {
-		return post{}, fmt.Errorf("repository: fail to create new posts %w", err)
+		return createPostResult{}, fmt.Errorf("repository: fail to create new posts %w", err)
 	}
 	if len(data.postMedia) > 0 {
 		_, err = tx.ExecContext(
@@ -83,14 +103,73 @@ func (repo *RepositoryImpl) create(ctx context.Context, data post) (post, error)
 			postMediaArgs...,
 		)
 		if err != nil {
-			return post{}, fmt.Errorf("repository: fail to add post media %w", err)
+			return createPostResult{}, fmt.Errorf("repository: fail to add post media %w", err)
 		}
 	}
+
+	rows, err := tx.QueryContext(
+		ctx,
+		`
+		SELECT p.id, p.caption, p.updated_at, pm.media_url, u.id AS user_id, u.fullname, sf.id AS subforum_id, sf.name AS subforum_name
+		FROM posts p
+		JOIN users u
+		ON p.user_id = u.id
+		JOIN subforums sf
+		ON p.subforum_id = sf.id
+		LEFT JOIN post_media pm
+		ON pm.post_id = p.id
+		WHERE p.id = ?`,
+		data.id,
+	)
+	if err != nil {
+		return createPostResult{}, err
+	}
+	defer rows.Close()
+
+	np := &newPost{}
+	var mediaURLs []string
+
+	for rows.Next() {
+		var mediaURL sql.NullString
+		if err := rows.Scan(
+			&np.id,
+			&np.caption,
+			&np.updatedAt,
+			&mediaURL,
+			&np.user.Id,
+			&np.user.Fullname,
+			&np.subforum.Id,
+			&np.subforum.Name,
+		); err != nil {
+			return createPostResult{}, err
+		}
+		if mediaURL.Valid {
+			mediaURLs = append(mediaURLs, mediaURL.String)
+		}
+	}
+	np.mediaUrl = mediaURLs
+
 	err = tx.Commit()
 	if err != nil {
-		return post{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
+		return createPostResult{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
 	}
-	return data, nil
+
+	return createPostResult{
+		post: newPost{
+			id:        data.id,
+			caption:   data.caption,
+			mediaUrl:  np.mediaUrl,
+			createdAt: data.createdAt,
+			user: user.User{
+				Id:       np.user.Id,
+				Fullname: np.user.Fullname,
+			},
+			subforum: subforum.Subforum{
+				Id:   np.subforum.Id,
+				Name: np.subforum.Name,
+			},
+		},
+	}, nil
 }
 
 func (repo *RepositoryImpl) takeDown(ctx context.Context, postId string, updatedAt sql.NullInt64) error {

@@ -65,8 +65,9 @@ func (api *ApiImpl) Create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "fail to process your request, failed to open post media files")
 	}
 
-	newPost.PostMedia = media.File["post_media"]
+	newPost.Media = media.File["post_media"]
 	newPost.userId = user.Id
+	newPost.SubforumId = c.FormValue("subforum_id")
 	newPost.Caption = c.FormValue("caption")
 	response, err := api.service.create(ctx, newPost)
 	if err != nil {

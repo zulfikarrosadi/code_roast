@@ -15,11 +15,13 @@ import (
 	"github.com/google/uuid"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 	imagehelper "github.com/zulfikarrosadi/code_roast/internal/image-helper"
+	"github.com/zulfikarrosadi/code_roast/internal/subforum"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type repository interface {
-	create(context.Context, post) (post, error)
+	create(context.Context, post) (createPostResult, error)
 	takeDown(context.Context, string, sql.NullInt64) error
 }
 
@@ -38,17 +40,20 @@ func NewService(repo repository, v *validator.Validate, cld *cloudinary.Cloudina
 }
 
 type postCreateRequest struct {
-	userId    string
-	Caption   string                  `validate:"required"`
-	PostMedia []*multipart.FileHeader `validate:"required,min=1,max=10"`
+	userId     string
+	Caption    string                  `validate:"required"`
+	SubforumId string                  `validate:"required"`
+	Media      []*multipart.FileHeader `validate:"required,min=1,max=10"`
 }
 
 type postCreateResponse struct {
-	Id        string        `json:"id"`
-	Caption   string        `json:"caption"`
-	PostMedia []postMedia   `json:"post_media"`
-	CreatedAt int64         `json:"created_at"`
-	UpdatedAt sql.NullInt64 `json:"updated_at"`
+	Id        string            `json:"id"`
+	Caption   string            `json:"caption"`
+	Media     []string          `json:"media"`
+	CreatedAt int64             `json:"created_at"`
+	UpdatedAt int64             `json:"updated_at"`
+	Subforum  subforum.Subforum `json:"subforum"`
+	User      user.User         `json:"user"`
 }
 
 type postResponse struct {
@@ -80,7 +85,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 	}
 
 	var media []postMedia
-	for _, item := range data.PostMedia {
+	for _, item := range data.Media {
 		mediaId, err := uuid.NewV7()
 		if err != nil {
 			return schema.Response[postResponse]{
@@ -134,13 +139,14 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		})
 	}
 
-	newPost, err := service.repo.create(ctx, post{
-		id:        postId.String(),
-		caption:   data.Caption,
-		createdAt: time.Now().Unix(),
-		updatedAt: sql.NullInt64{},
-		userId:    data.userId,
-		postMedia: media,
+	result, err := service.repo.create(ctx, post{
+		id:         postId.String(),
+		caption:    data.Caption,
+		createdAt:  time.Now().Unix(),
+		updatedAt:  sql.NullInt64{},
+		postMedia:  media,
+		userId:     data.userId,
+		subforumId: data.SubforumId,
 	})
 	if err != nil {
 		return schema.Response[postResponse]{
@@ -156,11 +162,19 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		Code:   http.StatusCreated,
 		Data: postResponse{
 			Post: postCreateResponse{
-				Id:        newPost.id,
-				Caption:   newPost.caption,
-				PostMedia: newPost.postMedia,
-				CreatedAt: newPost.createdAt,
-				UpdatedAt: newPost.updatedAt,
+				Id:        result.post.id,
+				Caption:   result.post.caption,
+				Media:     result.post.mediaUrl,
+				CreatedAt: result.post.createdAt,
+				UpdatedAt: result.post.updatedAt.Int64,
+				Subforum: subforum.Subforum{
+					Id:   result.post.subforum.Id,
+					Name: result.post.subforum.Name,
+				},
+				User: user.User{
+					Id:       result.post.user.Id,
+					Fullname: result.post.user.Fullname,
+				},
 			},
 		},
 	}, nil
@@ -193,7 +207,7 @@ func (service *serviceImpl) takeDown(ctx context.Context, postId string, updated
 		Data: postResponse{
 			Post: postCreateResponse{
 				Id:        postId,
-				UpdatedAt: updatedAt,
+				UpdatedAt: updatedAt.Int64,
 			},
 		},
 	}, nil
