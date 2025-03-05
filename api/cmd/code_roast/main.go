@@ -40,12 +40,22 @@ const (
 	CLOUDINARY_CLOUD_NAME = "dxz9dwknn"
 )
 
+func loadEnv() {
+	if os.Getenv("CI") == "true" {
+		return
+	}
+	if os.Getenv("environment") == "production" {
+		return
+	}
+	err := godotenv.Load("../../config")
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	e := echo.New()
-	err := godotenv.Load("../../config/.env")
-	if err != nil {
-		panic("env not loaded")
-	}
+	loadEnv()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
