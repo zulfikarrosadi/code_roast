@@ -1,0 +1,30 @@
+name: Go test
+
+on:
+  push:
+    branches: ["dev"]
+  pull_request:
+    branches: ["dev"]
+
+env:
+  JWT_SECRET: ${{secrets.JWT_SECRET}}
+  CLOUDINARY_API_SECRET: ${{secrets.CLOUDINARY_API_SECRET}}
+  CLOUDINARY_API_KEY: ${{secrets.CLOUDINARY_API_KEY}}
+  DB_CONNECTION_STRING: ${{secrets.DB_CONNECTION_STRING}}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.21
+      - name: Install dependencies
+        run: go mod tidy
+        working-directory: api
+      - name: Run tests
+        run: go test ./...
+        working-directory: api
