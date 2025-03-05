@@ -1,4 +1,4 @@
-package user
+package auth
 
 import (
 	"context"
@@ -11,14 +11,15 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Repository interface {
-	register(context.Context, userAndAuth) (publicUserData, error)
-	findByEmail(context.Context, string) (User, error)
+	register(context.Context, user.User, authentication) (publicUserData, error)
+	loginByEmail(context.Context, string, authentication) (user.User, error)
 	findRefreshToken(context.Context, string) (publicUserData, error)
 }
 
@@ -35,10 +36,41 @@ func NewUserService(repo Repository, v *validator.Validate) *ServiceImpl {
 }
 
 type CustomJWTClaims struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Fullname string `json:"fullname"`
+	Id       string       `json:"id"`
+	Email    string       `json:"email"`
+	Fullname string       `json:"fullname"`
+	Roles    []user.Roles `json:"roles"`
 	jwt.RegisteredClaims
+}
+
+type registrationRequest struct {
+	Id                   string `json:"id"`
+	Fullname             string `json:"fullname" validate:"required"`
+	Email                string `json:"email" validate:"required,email"`
+	Password             string `json:"password" validate:"required"`
+	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+	Agent                string
+	RemoteIp             string
+}
+
+type loginRequest struct {
+	Email    string `json:"email" validate:"required"`
+	Password string `json:"password" validate:"required"`
+	authentication
+}
+
+type registrationResponse struct {
+	ID       string       `json:"id"`
+	Email    string       `json:"email"`
+	Fullname string       `json:"fullname"`
+	Roles    []user.Roles `json:"roles"`
+}
+
+// we need this to standarize auth resposne
+type authResponse struct {
+	User         registrationResponse `json:"user"`
+	AccessToken  string               `json:"access_token"`
+	RefreshToken string               `json:"refresh_token"`
 }
 
 var JWT_SECRET = os.Getenv("JWT_SECRET")
@@ -58,6 +90,7 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 		Id:       user.id,
 		Email:    user.email,
 		Fullname: user.fullname,
+		Roles:    user.roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -78,10 +111,11 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 		Status: "success",
 		Code:   http.StatusOK,
 		Data: authResponse{
-			User: userCreateResponse{
+			User: registrationResponse{
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
+				Roles:    user.roles,
 			},
 			AccessToken:  newAccessToken,
 			RefreshToken: token,
@@ -91,9 +125,8 @@ func (service *ServiceImpl) refreshToken(ctx context.Context, token string) (sch
 
 func (service *ServiceImpl) register(
 	ctx context.Context,
-	newUser userCreateRequest,
+	newUser registrationRequest,
 ) (schema.Response[authResponse], error) {
-	fmt.Println(newUser)
 	err := service.v.Struct(newUser)
 	if err != nil {
 		validatorError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
@@ -148,13 +181,16 @@ func (service *ServiceImpl) register(
 		}, fmt.Errorf("service: fail generate hash from user password, %w", err)
 	}
 
-	user, err := service.Repository.register(ctx, userAndAuth{
-		id:        newUserId.String(),
-		fullname:  newUser.Fullname,
-		email:     newUser.Email,
-		password:  string(hashedPassword),
-		createdAt: time.Now().Unix(),
-		authentication: authentication{
+	user, err := service.Repository.register(
+		ctx,
+		user.User{
+			Id:        newUserId.String(),
+			Fullname:  newUser.Fullname,
+			Email:     newUser.Email,
+			Password:  string(hashedPassword),
+			CreatedAt: time.Now().Unix(),
+		},
+		authentication{
 			id:           authenticationId.String(),
 			refreshToken: refreshToken.String(),
 			lastLogin:    time.Now().Unix(),
@@ -162,9 +198,8 @@ func (service *ServiceImpl) register(
 			agent:        newUser.Agent,
 			remoteIP:     newUser.RemoteIp,
 		},
-	})
+	)
 	if err != nil {
-		fmt.Println("error service 1: ", err)
 		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[authResponse]{
@@ -187,6 +222,7 @@ func (service *ServiceImpl) register(
 		Id:       user.id,
 		Email:    user.email,
 		Fullname: user.fullname,
+		Roles:    user.roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -207,10 +243,11 @@ func (service *ServiceImpl) register(
 		Status: "success",
 		Code:   http.StatusCreated,
 		Data: authResponse{
-			User: userCreateResponse{
+			User: registrationResponse{
 				ID:       user.id,
 				Email:    user.email,
 				Fullname: user.fullname,
+				Roles:    user.roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),
@@ -220,7 +257,7 @@ func (service *ServiceImpl) register(
 
 func (service *ServiceImpl) login(
 	ctx context.Context,
-	user userLoginRequest,
+	user loginRequest,
 ) (schema.Response[authResponse], error) {
 	err := service.v.Struct(user)
 	if err != nil {
@@ -245,16 +282,35 @@ func (service *ServiceImpl) login(
 			},
 		}, fmt.Errorf("service: fail generate new refresh token, %w", err)
 	}
-	result, err := service.Repository.findByEmail(ctx, user.Email)
+	authId, err := uuid.NewV7()
 	if err != nil {
-		fmt.Println("service: ", err)
-		var authError authError
-		if errors.As(err, &authError) {
+		return schema.Response[authResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "fail process your request, please try again later",
+			},
+		}, fmt.Errorf("service: fail generate new auth id, %w", err)
+	}
+	result, err := service.Repository.loginByEmail(
+		ctx,
+		user.Email,
+		authentication{
+			id:           authId.String(),
+			refreshToken: refreshToken.String(),
+			lastLogin:    user.authentication.lastLogin,
+			remoteIP:     user.authentication.remoteIP,
+			agent:        user.authentication.agent,
+		},
+	)
+	if err != nil {
+		var appError *apperror.AppError
+		if errors.As(err, &appError) {
 			return schema.Response[authResponse]{
 				Status: "fail",
-				Code:   authError.Code,
+				Code:   appError.Code,
 				Error: schema.Error{
-					Message: authError.Msg,
+					Message: appError.Message,
 				},
 			}, err
 		}
@@ -280,6 +336,7 @@ func (service *ServiceImpl) login(
 		Id:       result.Id,
 		Email:    result.Email,
 		Fullname: result.Fullname,
+		Roles:    result.Roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -300,10 +357,11 @@ func (service *ServiceImpl) login(
 		Status: "success",
 		Code:   http.StatusOK,
 		Data: authResponse{
-			User: userCreateResponse{
+			User: registrationResponse{
 				ID:       result.Id,
 				Email:    result.Email,
 				Fullname: result.Fullname,
+				Roles:    result.Roles,
 			},
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken.String(),

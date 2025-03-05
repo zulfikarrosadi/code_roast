@@ -10,14 +10,14 @@ type RepositoryImpl struct {
 	DB *sql.DB
 }
 
-type subforum struct {
-	id          string
-	name        string
-	description string
-	userId      string
-	createdAt   int64
-	icon        string
-	banner      string
+type Subforum struct {
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	UserId      string `json:"user_id"`
+	CreatedAt   int64  `json:"created_at"`
+	Icon        string `json:"icon"`
+	Banner      string `json:"banner"`
 }
 
 func NewRepository(db *sql.DB) *RepositoryImpl {
@@ -26,40 +26,40 @@ func NewRepository(db *sql.DB) *RepositoryImpl {
 	}
 }
 
-func (repo *RepositoryImpl) create(ctx context.Context, data subforum) (subforum, error) {
+func (repo *RepositoryImpl) create(ctx context.Context, data Subforum) (Subforum, error) {
 	_, err := repo.DB.ExecContext(
 		ctx,
 		"INSERT INTO subforums (id, name, description, user_id, icon, banner, created_at) VALUES (?,?,?,?,?,?,?)",
-		data.id,
-		data.name,
-		data.description,
-		data.userId,
-		data.icon,
-		data.banner,
-		data.createdAt,
+		data.Id,
+		data.Name,
+		data.Description,
+		data.UserId,
+		data.Icon,
+		data.Banner,
+		data.CreatedAt,
 	)
 	if err != nil {
-		return subforum{}, fmt.Errorf("repository: fail to create new subforum %w", err)
+		return Subforum{}, fmt.Errorf("repository: fail to create new subforum %w", err)
 	}
 
 	return data, nil
 }
 
-func (repo *RepositoryImpl) findByName(ctx context.Context, name string) ([]subforum, error) {
-	subforums := []subforum{}
+func (repo *RepositoryImpl) findByName(ctx context.Context, name string) ([]Subforum, error) {
+	subforums := []Subforum{}
 	rows, err := repo.DB.QueryContext(
 		ctx,
 		"SELECT id, name, description, user_id, icon, created_at FROM subforums WHERE name = ?",
 		name,
 	)
 	if err != nil {
-		return []subforum{}, fmt.Errorf("repository: fail to retrieve subforums by name %w", err)
+		return []Subforum{}, fmt.Errorf("repository: fail to retrieve subforums by name %w", err)
 	}
 	for rows.Next() {
-		sf := subforum{}
-		err = rows.Scan(&sf.id, &sf.name, &sf.description, &sf.userId, &sf.icon, &sf.createdAt)
+		sf := Subforum{}
+		err = rows.Scan(&sf.Id, &sf.Name, &sf.Description, &sf.UserId, &sf.Icon, &sf.CreatedAt)
 		if err != nil {
-			return []subforum{}, fmt.Errorf("repository: fail to scan subforums %w", err)
+			return []Subforum{}, fmt.Errorf("repository: fail to scan subforums %w", err)
 		}
 		subforums = append(subforums, sf)
 	}
@@ -102,4 +102,17 @@ func (repo *RepositoryImpl) deleteById(ctx context.Context, id string, userId st
 	}
 
 	return nil
+}
+
+func (repo *RepositoryImpl) findById(ctx context.Context, forumId string) (Subforum, error) {
+	sf := &Subforum{}
+	err := repo.DB.QueryRowContext(
+		ctx,
+		"SELECT id, name, description, icon, banner, created_at FROM subforums WHERE id = ?",
+		forumId,
+	).Scan(&sf.Id, &sf.Name, &sf.Description, &sf.Icon, &sf.Banner, &sf.CreatedAt)
+	if err != nil {
+		return Subforum{}, fmt.Errorf("repository: failed to get subforum by id %w", err)
+	}
+	return *sf, nil
 }

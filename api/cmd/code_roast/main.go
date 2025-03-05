@@ -14,11 +14,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo-jwt/v4"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/zulfikarrosadi/code_roast/subforum"
-	"github.com/zulfikarrosadi/code_roast/user"
+	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	"github.com/zulfikarrosadi/code_roast/internal/moderator"
+	"github.com/zulfikarrosadi/code_roast/internal/post"
+	"github.com/zulfikarrosadi/code_roast/internal/subforum"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 )
 
 type Error struct {
@@ -39,7 +42,7 @@ const (
 
 func main() {
 	e := echo.New()
-	err := godotenv.Load()
+	err := godotenv.Load("../../config/.env")
 	if err != nil {
 		panic("env not loaded")
 	}
@@ -115,7 +118,7 @@ func main() {
 			return false
 		},
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
-			return &user.CustomJWTClaims{}
+			return &auth.CustomJWTClaims{}
 		},
 		ErrorHandler: func(c echo.Context, err error) error {
 			if errors.Is(err, jwt.ErrTokenExpired) {
@@ -167,35 +170,57 @@ func main() {
 		panic("cloudnary fail to initiate")
 	}
 	v := validator.New()
-	userRepository := user.NewUserRepository(logger, db)
-	userService := user.NewUserService(userRepository, v)
-	userApi := user.NewApiHandler(logger, userService)
+	userRepository := auth.NewUserRepository(logger, db)
+	userService := auth.NewUserService(userRepository, v)
+	userApi := auth.NewApiHandler(logger, userService)
 
 	subforumRepository := subforum.NewRepository(db)
-	subforumService := subforum.NewService(subforumRepository, v)
-	subforumApi := subforum.NewApi(subforumService, cld, logger)
+	subforumService := subforum.NewService(subforumRepository, v, cld)
+	subforumApi := subforum.NewApi(subforumService, logger)
+
+	postRepository := post.NewRepository(db)
+	postService := post.NewService(postRepository, v, cld)
+	postApi := post.NewApi(postService, logger)
+
+	moderatorRepository := moderator.NewRepository(db)
+	moderatorService := moderator.NewService(moderatorRepository, v)
+	moderatorApi := moderator.NewApi(moderatorService, logger)
 
 	r := e.Group("/api/v1")
 	r.POST("/signup", userApi.Register)
 	r.POST("/signin", userApi.Login)
 	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create)
-	r.GET("/", func(c echo.Context) error {
-		token := c.Get("user").(*jwt.Token)
+	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
+	r.POST("/posts", postApi.Create)
+	r.POST("/posts/:id/likes", postApi.Like)
+	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
+	r.POST("/moderators", moderatorApi.AddRoles)
 
-		// Extract the claims from the token
-		claims, ok := token.Claims.(*user.CustomJWTClaims)
-		if !ok {
-			fmt.Println("token: ", token)
-		}
-		fmt.Println(claims.Email)
-		err := c.String(http.StatusOK, "ok")
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "error")
-		}
-		return nil
-	})
 	e.Start("localhost:3000")
+}
+
+func roles(requiredRoles []int) func(echo.HandlerFunc) echo.HandlerFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			token := c.Get("user").(*jwt.Token)
+
+			claims, ok := token.Claims.(*auth.CustomJWTClaims)
+			if !ok {
+				return echo.NewHTTPError(http.StatusForbidden, "you don't have perimission to do this operation")
+			}
+
+			roleSet := make(map[int]bool)
+			for _, role := range claims.Roles {
+				roleSet[role.Id] = true
+			}
+			for _, reqRole := range requiredRoles {
+				if !roleSet[reqRole] {
+					return echo.NewHTTPError(http.StatusForbidden, "you don't have permission to do this operation")
+				}
+			}
+			return next(c)
+		}
+	}
 }
 
 func OpenDBConnection(logger *slog.Logger) *sql.DB {

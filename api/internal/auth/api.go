@@ -1,19 +1,21 @@
-package user
+package auth
 
 import (
 	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	apperror "github.com/zulfikarrosadi/code_roast/app-error"
-	"github.com/zulfikarrosadi/code_roast/schema"
+	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
 type Service interface {
-	register(context.Context, userCreateRequest) (schema.Response[authResponse], error)
-	login(context.Context, userLoginRequest) (schema.Response[authResponse], error)
+	register(context.Context, registrationRequest) (schema.Response[authResponse], error)
+	login(context.Context, loginRequest) (schema.Response[authResponse], error)
 	refreshToken(context.Context, string) (schema.Response[authResponse], error)
 }
 
@@ -27,6 +29,19 @@ func NewApiHandler(logger *slog.Logger, service Service) *ApiHandler {
 		Logger:  logger,
 		Service: service,
 	}
+}
+
+func GetUserFromContext(c echo.Context) (*CustomJWTClaims, error) {
+	userData := c.Get("user").(*jwt.Token)
+	if userData == nil {
+		return nil, echo.NewHTTPError(401, "User not found in context")
+	}
+	claims, ok := userData.Claims.(*CustomJWTClaims)
+	if !ok {
+		return nil, echo.NewHTTPError(401, "Invalid user claims")
+	}
+
+	return claims, nil
 }
 
 const (
@@ -100,7 +115,7 @@ func (api *ApiHandler) RefreshToken(c echo.Context) error {
 }
 
 func (api *ApiHandler) Login(c echo.Context) error {
-	user := new(userLoginRequest)
+	user := new(loginRequest)
 	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
@@ -121,6 +136,11 @@ func (api *ApiHandler) Login(c echo.Context) error {
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
 		)
+	}
+	user.authentication = authentication{
+		lastLogin: time.Now().Unix(),
+		remoteIP:  c.Request().RemoteAddr,
+		agent:     c.Request().UserAgent(),
 	}
 	response, err := api.Service.login(ctx, *user)
 	if err != nil {
@@ -205,7 +225,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 }
 
 func (api *ApiHandler) Register(c echo.Context) error {
-	user := new(userCreateRequest)
+	user := new(registrationRequest)
 	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
 
 	if err := c.Bind(user); err != nil {
@@ -227,7 +247,7 @@ func (api *ApiHandler) Register(c echo.Context) error {
 			"fail to process your request, send corerct data and try again",
 		)
 	}
-	response, err := api.Service.register(ctx, userCreateRequest{
+	response, err := api.Service.register(ctx, registrationRequest{
 		Id:                   user.Id,
 		Fullname:             user.Fullname,
 		PasswordConfirmation: user.PasswordConfirmation,
