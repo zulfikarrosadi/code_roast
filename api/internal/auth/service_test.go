@@ -234,11 +234,6 @@ func TestServiceImpl_loginByEmail(t *testing.T) {
 				assert.Equal(t, tt.repoResponse.Email, resp.Data.User.Email)
 				assert.Equal(t, tt.repoResponse.Fullname, resp.Data.User.Fullname)
 			} else {
-				fmt.Println("======================")
-				fmt.Println(err)
-				fmt.Println(resp)
-				fmt.Println("======================")
-
 				assert.Error(t, err)
 				assert.Equal(t, tt.expectStatus, resp.Status)
 				assert.Equal(t, tt.expectCode, resp.Code)
