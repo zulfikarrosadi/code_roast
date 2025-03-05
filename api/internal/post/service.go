@@ -184,7 +184,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 func (service *serviceImpl) takeDown(ctx context.Context, postId string, updatedAt sql.NullInt64) (schema.Response[postResponse], error) {
 	err := service.repo.takeDown(ctx, postId, updatedAt)
 	if err != nil {
-		var appError apperror.AppError
+		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[postResponse]{
 				Status: "fail",

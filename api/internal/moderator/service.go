@@ -60,7 +60,7 @@ func (service *serviceImpl) addRoles(
 
 	result, err := service.repository.addRoles(ctx, data)
 	if err != nil {
-		var appError apperror.AppError
+		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[UpdatePermissionResponse]{
 				Status: "fail",
@@ -107,7 +107,7 @@ func (service *serviceImpl) removeRoles(
 	}
 	result, err := service.repository.removeRoles(ctx, data)
 	if err != nil {
-		var appError apperror.AppError
+		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[UpdatePermissionResponse]{
 				Status: "fail",

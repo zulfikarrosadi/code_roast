@@ -127,7 +127,6 @@ func (service *ServiceImpl) register(
 	ctx context.Context,
 	newUser registrationRequest,
 ) (schema.Response[authResponse], error) {
-	fmt.Println(newUser)
 	err := service.v.Struct(newUser)
 	if err != nil {
 		validatorError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
@@ -201,7 +200,6 @@ func (service *ServiceImpl) register(
 		},
 	)
 	if err != nil {
-		fmt.Println("error service 1: ", err)
 		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[authResponse]{
@@ -306,7 +304,7 @@ func (service *ServiceImpl) login(
 		},
 	)
 	if err != nil {
-		var appError apperror.AppError
+		var appError *apperror.AppError
 		if errors.As(err, &appError) {
 			return schema.Response[authResponse]{
 				Status: "fail",
