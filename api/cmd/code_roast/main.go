@@ -47,7 +47,7 @@ func loadEnv() {
 	if os.Getenv("environment") == "production" {
 		return
 	}
-	err := godotenv.Load("../../config")
+	err := godotenv.Load("../../config/.env")
 	if err != nil {
 		panic(err)
 	}
