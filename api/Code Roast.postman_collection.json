@@ -1,0 +1,480 @@
+{
+	"info": {
+		"_postman_id": "2acf419a-c5a4-48eb-85be-3ef6899839cc",
+		"name": "Code Roast",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "14124784",
+		"_collection_link": "https://dark-meadow-855364.postman.co/workspace/Belajar~41e0fb13-11ad-45d4-9753-7a70a577ec62/collection/14124784-2acf419a-c5a4-48eb-85be-3ef6899839cc?action=share&source=collection_link&creator=14124784"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Sign Up",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const body = pm.response.json()",
+									"    pm.collectionVariables.set(\"email\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"fullname\", body.data.user.fullname)",
+									"    pm.collectionVariables.set(\"access_token\", body.data.access_token)",
+									"}",
+									"",
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{$randomExampleEmail}}\",\n    \"password\": \"{{password}}\",\n    \"password_confirmation\": \"{{password}}\",\n    \"fullname\": \"{{$randomFullName}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/signup",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"signup"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Sign In Regular User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const body = pm.response.json()",
+									"    pm.collectionVariables.set(\"email\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"regular_user\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"fullname\", body.data.user.fullname)",
+									"    pm.collectionVariables.set(\"access_token\", body.data.access_token)",
+									"}",
+									"",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{regular_user}}\",\n    \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/signin",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"signin"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const body = pm.response.json()",
+									"    pm.collectionVariables.set(\"email\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"fullname\", body.data.user.fullname)",
+									"    pm.collectionVariables.set(\"access_token\", body.data.access_token)",
+									"}",
+									"",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url_v1}}/refresh",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Sign In Admin",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const body = pm.response.json()",
+									"    pm.collectionVariables.set(\"email\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"admin_user\", body.data.user.email)",
+									"    pm.collectionVariables.set(\"fullname\", body.data.user.fullname)",
+									"    pm.collectionVariables.set(\"access_token\", body.data.access_token)",
+									"}",
+									"",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{admin_user}}\",\n    \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/signin",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"signin"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Subforum",
+			"item": [
+				{
+					"name": "New Subforum",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Roasting Abiess 2",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "{{$randomLoremSentences}}",
+									"type": "text"
+								},
+								{
+									"key": "icon",
+									"type": "file",
+									"src": "postman-cloud:///1ef7334f-dd93-4960-a155-8de29fcef4ee"
+								},
+								{
+									"key": "banner",
+									"type": "file",
+									"src": "postman-cloud:///1ef7334f-dd93-4960-a155-8de29fcef4ee"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/subforums",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"subforums"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Post",
+			"item": [
+				{
+					"name": "New Post",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "caption",
+									"value": "tets",
+									"type": "text"
+								},
+								{
+									"key": "post_media",
+									"type": "file",
+									"src": [
+										"postman-cloud:///1ef7334f-d60f-4c20-b99b-52e926854037",
+										"postman-cloud:///1ef7334f-dd93-4960-a155-8de29fcef4ee"
+									]
+								},
+								{
+									"key": "subforum_id",
+									"value": "01955b56-997a-7cf2-850c-9504ab5805fd",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/posts",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"posts"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Like",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url_v1}}/posts/:id/likes",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"posts",
+								":id",
+								"likes"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "0195637d-3d3d-77a1-a3f3-57e9707f950f"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Moderator",
+			"item": [
+				{
+					"name": "Add Permission To User",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"019541b3-d333-72f9-b56f-015d39ec2d65\",\n    \"role_id\": [\n        1, 2, 3\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url_v1}}/moderators",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"moderators"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Take Down Post",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{base_url_v1}}/moderators/posts/:postId/status",
+							"host": [
+								"{{base_url_v1}}"
+							],
+							"path": [
+								"moderators",
+								"posts",
+								":postId",
+								"status"
+							],
+							"variable": [
+								{
+									"key": "postId",
+									"value": "01955b45-24ad-72a1-a36b-c3a02c16b569"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url_v1",
+			"value": "http://localhost:3000/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "email",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "password",
+			"value": "password",
+			"type": "string"
+		},
+		{
+			"key": "fullname",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "admin_user",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "regular_user",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
