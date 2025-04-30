@@ -1,0 +1,452 @@
+openapi: 3.0.3
+info:
+  title: Code Roast API
+  version: 1.0.0
+  description: Code Roast web api service
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development Server
+  - url: https://coderoast-api.vercel.app
+    description: Production Server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  headers:
+    RefreshToken:
+      description: refresh token header
+      schema:
+        type: string
+        example: refresh_token='eyjsasdapfewmo.kfsdopwkf.sodkokefeo'; Path=/api/v1/refresh; Secure; HttpOnly; Max-Age=604800
+  schemas:
+    AuthSuccess:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        code:
+          type: number
+          example: 200
+        data:
+          type: object
+          properties:
+            users:
+              type: object
+              properties:
+                id:
+                  type: number
+                  format: uuid
+                  example: '123-123-123-123-123'
+                fullname:
+                  type: string
+                  example: Jhon Doe
+                email:
+                  type: string
+                  example: email@testing.com
+            access_token:
+              type: string
+              example: 'eyjofkwmcpwke.sodfkokef.asdew'
+            refresh_token:
+              type: string
+              example: 'eyjofkwmcpwke.sodfkokef.asdko'
+  responses:
+    AuthSuccess:
+      description: auth success response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AuthSuccess"
+    BadRequest:
+      description: caused by input user is invalid
+      content:
+        status:
+          example: fail
+        code:
+          example: 400
+        error:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: bad request
+    ServerError:
+      description: server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                example: fail
+              code:
+                example: 500
+              error:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: something went wrong, please try again later
+paths:
+  /signup:
+    post:
+      summary: Register
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              bad request:
+                value:
+                  fullname: ''
+                  email: ''
+                  password: ''
+                  password_confirmation: ''
+              success:
+                value:
+                  fullname: John Doe
+                  email: email@example.com
+                  password: strongest password
+                  password_confirmation: strongest password
+            schema:
+              properties:
+                fullname:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+      responses:
+        "201":
+          description: "successfully Register"
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                bad request:
+                  summary: something bad happen
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: user already exists
+                validation error:
+                  summary: User input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        email: invalid email format
+                        fullname: fullname is required
+                        password: password and password confirmation not match
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+                          password_confirmation:
+                            type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+  /signin:
+    post:
+      summary: Sign In
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: User successfully authenticated
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                bad request:
+                  summary: something bad happen
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: email or password is incorrect
+                validation error:
+                  summary: User input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        email: email is required
+                        password: password is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+  /refresh:
+    get:
+      summary: Refresh Token
+      tags:
+        - Auth
+      parameters:
+        - in: header
+          name: Cookie
+          description: Refresh token saved in cookie
+          schema:
+            type: string
+            example: refresh_token='eyjsasdapfewmo.kfsdopwkf.sodkokefeo'; Path=/api/v1/refresh; Secure; HttpOnly; Max-Age=604800
+      responses:
+        200:
+          description: Token refreshed
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                refresh token not found:
+                  summary: refresh token not found in cookie or database
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: refresh token lookup not found
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+        "500":
+          description: Server error
+          content:
+            application/json:
+              examples:
+                token generation failed:
+                  summary: refresh token found, but access token generation failed
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, generate new access token fail, please try again later
+                general error:
+                  summary: server error, need to report to system admin
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, please try again later
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+  /subforums:
+    post:
+      summary: Create new subforum
+      security:
+        - bearerAuth: []
+      tags:
+        - Subforum
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                icon:
+                  type: string
+                  format: binary
+                banner:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: successfully create new subforum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      subforum:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          name:
+                            type: string
+                            example: 'Programmer'
+                          description:
+                            type: string
+                            example: This is some description
+                          created_at:
+                            type: number
+                            example: 177748237489781
+                          media:
+                            type: object
+                            properties:
+                              icon:
+                                type: string
+                                example: 'www.path-to-icon.com/icon.jpg'
+                              banner:
+                                type: string
+                                example: 'www.path-to-banner.com/banner.jpg'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                unsupported file format:
+                  description: unsupported file format for icon or banner
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: fail to create new subforum, unsupported icon file type. Only upload jpg or png file
+                validation error:
+                  description: validation error
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        name: name is required
+                        description: description is required
+                        icon: icon is required
+                        banner: banner is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
