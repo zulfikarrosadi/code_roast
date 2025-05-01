@@ -16,8 +16,8 @@ import (
 )
 
 type service interface {
-	create(context.Context, postCreateRequest) (schema.Response[postResponse], error)
-	takeDown(context.Context, string, sql.NullInt64) (schema.Response[postResponse], error)
+	create(context.Context, createRequest) (schema.Response[createResponse], error)
+	takeDown(context.Context, string, sql.NullInt64) (schema.Response[createResponse], error)
 	like(context.Context, likeCreateRequest) (schema.Response[likeResponse], error)
 }
 
@@ -47,7 +47,7 @@ func (api *ApiImpl) Create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Please use correct user credential and try again later")
 	}
 
-	newPost := postCreateRequest{}
+	newPost := createRequest{}
 	media, err := c.MultipartForm()
 	if err != nil {
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",

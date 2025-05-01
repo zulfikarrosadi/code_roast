@@ -49,10 +49,6 @@ type newPost struct {
 	subforum  subforum.Subforum
 }
 
-type createPostResult struct {
-	post newPost
-}
-
 const (
 	POST_STATUS_PUBLISHED = "published"
 	POST_STATUS_PENDING   = "pending"
@@ -62,7 +58,7 @@ const (
 func (repo *RepositoryImpl) create(
 	ctx context.Context,
 	data post,
-) (createPostResult, error) {
+) (newPost, error) {
 	postMediaValue := []string{}
 	postMediaArgs := []interface{}{}
 	var insertPostMediaQuery string
@@ -77,7 +73,7 @@ func (repo *RepositoryImpl) create(
 
 	tx, err := repo.DB.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: failed to begin transaction %w", err)
+		return newPost{}, fmt.Errorf("repository: failed to begin transaction %w", err)
 	}
 	defer func() {
 		if p := recover(); p != nil {
@@ -94,7 +90,7 @@ func (repo *RepositoryImpl) create(
 		data.id, data.caption, data.createdAt, data.userId, data.subforumId,
 	)
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: fail to create new posts %w", err)
+		return newPost{}, fmt.Errorf("repository: fail to create new posts %w", err)
 	}
 	if len(data.postMedia) > 0 {
 		_, err = tx.ExecContext(
@@ -103,7 +99,7 @@ func (repo *RepositoryImpl) create(
 			postMediaArgs...,
 		)
 		if err != nil {
-			return createPostResult{}, fmt.Errorf("repository: fail to add post media %w", err)
+			return newPost{}, fmt.Errorf("repository: fail to add post media %w", err)
 		}
 	}
 
@@ -122,7 +118,7 @@ func (repo *RepositoryImpl) create(
 		data.id,
 	)
 	if err != nil {
-		return createPostResult{}, err
+		return newPost{}, err
 	}
 	defer rows.Close()
 
@@ -141,7 +137,7 @@ func (repo *RepositoryImpl) create(
 			&np.subforum.Id,
 			&np.subforum.Name,
 		); err != nil {
-			return createPostResult{}, err
+			return newPost{}, err
 		}
 		if mediaURL.Valid {
 			mediaURLs = append(mediaURLs, mediaURL.String)
@@ -151,23 +147,21 @@ func (repo *RepositoryImpl) create(
 
 	err = tx.Commit()
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
+		return newPost{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
 	}
 
-	return createPostResult{
-		post: newPost{
-			id:        data.id,
-			caption:   data.caption,
-			mediaUrl:  np.mediaUrl,
-			createdAt: data.createdAt,
-			user: user.User{
-				Id:       np.user.Id,
-				Fullname: np.user.Fullname,
-			},
-			subforum: subforum.Subforum{
-				Id:   np.subforum.Id,
-				Name: np.subforum.Name,
-			},
+	return newPost{
+		id:        data.id,
+		caption:   data.caption,
+		mediaUrl:  np.mediaUrl,
+		createdAt: data.createdAt,
+		user: user.User{
+			Id:       np.user.Id,
+			Fullname: np.user.Fullname,
+		},
+		subforum: subforum.Subforum{
+			Id:   np.subforum.Id,
+			Name: np.subforum.Name,
 		},
 	}, nil
 }
