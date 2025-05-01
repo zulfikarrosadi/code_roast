@@ -116,3 +116,17 @@ func (repo *RepositoryImpl) findById(ctx context.Context, forumId string) (Subfo
 	}
 	return *sf, nil
 }
+
+func (repo *RepositoryImpl) findAll(ctx context.Context) ([]Subforum, error) {
+	subforums := []Subforum{}
+	rows, err := repo.DB.QueryContext(ctx, "SELECT id, name, description, icon, banner, created_at FROM subforums LIMIT 100")
+	if err != nil {
+		return subforums, err
+	}
+	for rows.Next() {
+		subforum := Subforum{}
+		rows.Scan(&subforum.Id, &subforum.Name, &subforum.Description, &subforum.Icon, &subforum.Banner, &subforum.CreatedAt)
+		subforums = append(subforums, subforum)
+	}
+	return subforums, nil
+}
