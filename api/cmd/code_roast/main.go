@@ -177,28 +177,6 @@ func main() {
 		},
 	}))
 	e.Use(middleware.Secure())
-	e.Use(echojwt.WithConfig(echojwt.Config{
-		SigningKey:    []byte(os.Getenv("JWT_SECRETS")),
-		SigningMethod: echojwt.AlgorithmHS256,
-		Skipper: func(c echo.Context) bool {
-			fmt.Println(c.Path())
-			if c.Path() == "/api/v1/signin" || c.Path() == "/api/v1/signup" || c.Path() == "/api/v1/refresh" {
-				return true
-			}
-			return false
-		},
-		NewClaimsFunc: func(c echo.Context) jwt.Claims {
-			return &auth.CustomJWTClaims{}
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			if errors.Is(err, jwt.ErrTokenExpired) {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
-			} else if errors.Is(err, jwt.ErrTokenMalformed) {
-				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
-			}
-			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
-		},
-	}))
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		if c.Response().Committed {
 			return
@@ -256,15 +234,34 @@ func main() {
 	moderatorService := moderator.NewService(moderatorRepository, v)
 	moderatorApi := moderator.NewApi(moderatorService, logger)
 
-	r := e.Group("/api/v1")
-	r.POST("/signup", userApi.Register)
-	r.POST("/signin", userApi.Login)
-	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
-	r.POST("/posts", postApi.Create)
-	r.POST("/posts/:id/likes", postApi.Like)
-	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
-	r.POST("/moderators", moderatorApi.AddRoles)
+	protected := e.Group("/api/v1")
+	public := e.Group("/api/v1")
+
+	protected.Use(echojwt.WithConfig(echojwt.Config{
+		SigningKey:    []byte(os.Getenv("JWT_SECRETS")),
+		SigningMethod: echojwt.AlgorithmHS256,
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return &auth.CustomJWTClaims{}
+		},
+		ErrorHandler: func(c echo.Context, err error) error {
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
+			} else if errors.Is(err, jwt.ErrTokenMalformed) {
+				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
+			}
+			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
+		},
+	}))
+
+	public.POST("/signup", userApi.Register)
+	public.POST("/signin", userApi.Login)
+	protected.GET("/refresh", userApi.RefreshToken)
+	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
+	public.GET("/subforums", subforumApi.GetAll)
+	protected.POST("/posts", postApi.Create)
+	protected.POST("/posts/:id/likes", postApi.Like)
+	protected.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
+	protected.POST("/moderators", moderatorApi.AddRoles)
 
 	e.Start("localhost:3000")
 }
