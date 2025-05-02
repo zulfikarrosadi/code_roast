@@ -13,11 +13,11 @@ type RepositoryImpl struct {
 type Subforum struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
-	Description string `json:"description"`
-	UserId      string `json:"user_id"`
-	CreatedAt   int64  `json:"created_at"`
-	Icon        string `json:"icon"`
-	Banner      string `json:"banner"`
+	Description string `json:"description,omitempty"`
+	UserId      string `json:"user_id,omitempty"`
+	CreatedAt   int64  `json:"created_at,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Banner      string `json:"banner,omitempty"`
 }
 
 func NewRepository(db *sql.DB) *RepositoryImpl {
