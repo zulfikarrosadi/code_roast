@@ -259,6 +259,7 @@ func main() {
 	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	public.GET("/subforums", subforumApi.GetAll)
 	protected.POST("/posts", postApi.Create)
+	public.GET("/posts", postApi.GetAll)
 	protected.POST("/posts/:id/likes", postApi.Like)
 	protected.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
 	protected.POST("/moderators", moderatorApi.AddRoles)

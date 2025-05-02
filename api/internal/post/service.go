@@ -24,6 +24,7 @@ type repository interface {
 	create(context.Context, post) (newPost, error)
 	takeDown(context.Context, string, sql.NullInt64) error
 	like(context.Context, newLike) (int, error)
+	findAll(context.Context) ([]getAllPost, error)
 }
 
 type serviceImpl struct {
@@ -58,6 +59,10 @@ type createRequest struct {
 
 type createResponse struct {
 	Post postDTO `json:"post"`
+}
+
+type getAllResponse struct {
+	Posts []postDTO `json:"posts"`
 }
 
 func (service *serviceImpl) create(ctx context.Context, data createRequest) (schema.Response[createResponse], error) {
@@ -265,6 +270,41 @@ func (service *serviceImpl) like(
 				PostId:    data.PostId,
 				LikeCount: likeCount,
 			},
+		},
+	}, nil
+}
+
+func (service *serviceImpl) getAll(ctx context.Context) (schema.Response[getAllResponse], error) {
+	result, err := service.repo.findAll(ctx)
+	if err != nil {
+		return schema.Response[getAllResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "something went wrong, please try again later",
+			},
+		}, err
+	}
+	posts := []postDTO{}
+	for _, v := range result {
+		p := postDTO{
+			Id:        v.id,
+			Caption:   v.caption,
+			Media:     v.mediaUrl,
+			CreatedAt: v.createdAt,
+			Subforum:  v.subforum,
+			User:      v.user,
+		}
+		if v.updatedAt.Valid {
+			p.UpdatedAt = v.updatedAt.Int64
+		}
+		posts = append(posts, p)
+	}
+	return schema.Response[getAllResponse]{
+		Status: "success",
+		Code:   http.StatusOK,
+		Data: getAllResponse{
+			Posts: posts,
 		},
 	}, nil
 }

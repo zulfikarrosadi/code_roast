@@ -49,6 +49,16 @@ type newPost struct {
 	subforum  subforum.Subforum
 }
 
+type getAllPost struct {
+	id        string
+	caption   string
+	mediaUrl  []string
+	createdAt int64
+	updatedAt sql.NullInt64
+	user      user.User
+	subforum  subforum.Subforum
+}
+
 const (
 	POST_STATUS_PUBLISHED = "published"
 	POST_STATUS_PENDING   = "pending"
@@ -237,4 +247,71 @@ func (repo *RepositoryImpl) like(
 	}
 	fmt.Println(*likeCount)
 	return likeCount.count, nil
+}
+
+func (repo *RepositoryImpl) findAll(ctx context.Context) ([]getAllPost, error) {
+	rows, err := repo.DB.QueryContext(
+		ctx,
+		`
+			SELECT
+				p.id, p.caption, p.created_at, p.updated_at,
+				pm.media_url,
+				u.id AS user_id, u.fullname,
+				sf.id AS subforum_id, sf.name AS subforum_name
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			JOIN subforums sf ON p.subforum_id = sf.id
+			LEFT JOIN post_media pm ON pm.post_id = p.id
+		`,
+	)
+	if err != nil {
+		return []getAllPost{}, err
+	}
+	defer rows.Close()
+
+	postMap := make(map[string]*getAllPost)
+	for rows.Next() {
+		var (
+			id           string
+			caption      string
+			updatedAt    sql.NullInt64
+			createdAt    sql.NullInt64
+			mediaUrl     sql.NullString
+			userId       string
+			userFullname string
+			subforumId   string
+			subforumName string
+		)
+		err := rows.Scan(&id, &caption, &createdAt, &updatedAt, &mediaUrl, &userId, &userFullname, &subforumId, &subforumName)
+		if err != nil {
+			return []getAllPost{}, err
+		}
+		if _, exists := postMap[id]; !exists {
+			postMap[id] = &getAllPost{
+				id:        id,
+				caption:   caption,
+				createdAt: createdAt.Int64,
+				updatedAt: updatedAt,
+				mediaUrl:  []string{},
+				user: user.User{
+					Id:       userId,
+					Fullname: userFullname,
+				},
+				subforum: subforum.Subforum{
+					Id:   subforumId,
+					Name: subforumName,
+				},
+			}
+			if mediaUrl.Valid {
+				postMap[id].mediaUrl = append(postMap[id].mediaUrl, mediaUrl.String)
+			}
+		}
+	}
+	// Convert map to slice
+	posts := make([]getAllPost, 0, len(postMap))
+	for _, p := range postMap {
+		posts = append(posts, *p)
+	}
+
+	return posts, nil
 }

@@ -19,6 +19,7 @@ type service interface {
 	create(context.Context, createRequest) (schema.Response[createResponse], error)
 	takeDown(context.Context, string, sql.NullInt64) (schema.Response[createResponse], error)
 	like(context.Context, likeCreateRequest) (schema.Response[likeResponse], error)
+	getAll(ctx context.Context) (schema.Response[getAllResponse], error)
 }
 
 type ApiImpl struct {
@@ -223,6 +224,46 @@ func (api *ApiImpl) TakeDown(c echo.Context) error {
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
 		)
+	}
+	return nil
+}
+
+func (api *ApiImpl) GetAll(c echo.Context) error {
+	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	response, err := api.service.getAll(ctx)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		return echo.NewHTTPError(response.Code, response.Error.Message)
+	}
+
+	err = c.JSON(response.Code, response)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", response.Code),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong please try again later")
 	}
 	return nil
 }
