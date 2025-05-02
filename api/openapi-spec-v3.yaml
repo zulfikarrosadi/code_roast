@@ -351,6 +351,76 @@ paths:
                           password:
                             type: string
   /posts:
+    get:
+      summary: Get all post
+      tags:
+        - Post
+      responses:
+        "200":
+          description: "successfully get all post"
+          content:
+            application/json:
+              example:
+                status: success
+                code: 200
+                data:
+                  posts:
+                    - id: '123-123-123-123-123'
+                      caption: 'The best post ever'
+                      media:
+                        - 'https://path/to-media.jpg'
+                        - 'https://path/to-media.png'
+                      user:
+                        id: '123-123-123-123-123'
+                        fullname: 'Jhon'
+                      subforum:
+                        id: '123-123-123-123-123.jpg'
+                        name: 'Roasting abies'
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      posts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            caption:
+                              type: string
+                            media:
+                              type: array
+                              items:
+                                type: string
+                            created_at:
+                              type: number
+                            updated_at:
+                              type: number
+                            subforum:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                name:
+                                  type: string
+                            user:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                fullname:
+                                  type: string
+        "500":
+          $ref: "#/components/responses/ServerError"
     post:
       summary: Create new post
       tags:
@@ -500,6 +570,44 @@ paths:
                     error:
                       message: fail to create new post, failed to upload media file
   /subforums:
+    get:
+      tags:
+        - Subforum
+      summary: Get all subforum
+      responses:
+        "200":
+          description: successfully get all subforum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      subforums:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            description:
+                              type: string
+                            created_at:
+                              type: number
+                            media:
+                              type: object
+                              properties:
+                                icon:
+                                  type: string
+                                banner:
+                                  type: string
     post:
       summary: Create new subforum
       security:
