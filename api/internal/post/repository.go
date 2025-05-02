@@ -190,7 +190,7 @@ func (repo *RepositoryImpl) takeDown(ctx context.Context, postId string, updated
 		return fmt.Errorf("repository: failed to get rows affected")
 	}
 	if rowsAffected == 0 {
-		return apperror.New(http.StatusBadRequest, "failed to take down post, post id not found", err)
+		return apperror.New(http.StatusNotFound, "failed to take down post, post id not found", err)
 	}
 	return nil
 }
