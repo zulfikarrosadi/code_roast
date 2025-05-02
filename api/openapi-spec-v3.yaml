@@ -65,6 +65,26 @@ components:
             refresh_token:
               type: string
               example: 'eyjofkwmcpwke.sodfkokef.asdko'
+    NotFound:
+      $ref: "#/components/schemas/BadRequest"
+    BadRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          example: fail
+        code:
+          type: string
+          example: 400
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: bad request
+            details:
+              type: object
+              additionalProperties: true
   responses:
     AuthSuccess:
       description: auth success response
@@ -75,17 +95,9 @@ components:
     BadRequest:
       description: caused by input user is invalid
       content:
-        status:
-          example: fail
-        code:
-          example: 400
-        error:
+        application/json:
           schema:
-            type: object
-            properties:
-              message:
-                type: string
-                example: bad request
+            $ref: "#/components/schemas/BadRequest"
     ServerError:
       description: server error
       content:
@@ -350,6 +362,60 @@ paths:
                             type: string
                           password:
                             type: string
+  /posts/{id}/likes:
+    post:
+      summary: Create new like
+      tags:
+        - Post
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          description: post id
+          schema:
+            type: string
+            format: uuid
+          required: true
+      responses:
+        "201":
+          description: successfully create a like
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: number
+                          like_count:
+                            type: number
+        "400":
+          description: caused by invalid user input
+          content:
+            application/json:
+              examples:
+                validation error:
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        id: id is required
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        "500":
+          $ref: "#/components/responses/ServerError"
   /posts:
     get:
       summary: Get all post
@@ -710,3 +776,127 @@ paths:
                         type: string
         "500":
           $ref: '#/components/responses/ServerError'
+  /moderators:
+    post:
+      summary: add roles to user
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                role_id:
+                  type: array
+                  items:
+                    type: number
+      responses:
+        "201":
+          description: successfully add role to member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          roles:
+                            type: array
+                            items:
+                              type: number
+                              example:
+                                - 1
+                                  2
+                                  3
+        "400":
+          description: bad request
+          content:
+            application/json:
+              examples:
+                already have the role:
+                  description: the user already have the role
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: This user already have that role
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /moderators/posts/{postId}/status:
+    post:
+      summary: take down the post
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: successfully take down the post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: succes
+                  code:
+                    type: number
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          updated_at:
+                            type: number
+                            example: 1778172837121
+        "404":
+          description: post id not found
+          content:
+            application/json:
+              examples:
+                post id not found:
+                  value:
+                    status: fail
+                    code: 404
+                    error:
+                      message: failed to take down post, post id not found
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
