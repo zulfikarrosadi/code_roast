@@ -218,9 +218,9 @@ func main() {
 		panic("cloudnary fail to initiate")
 	}
 	v := validator.New()
-	userRepository := auth.NewUserRepository(logger, db)
-	userService := auth.NewUserService(userRepository, v)
-	userApi := auth.NewApiHandler(logger, userService)
+	authRepository := auth.NewUserRepository(logger, db)
+	authService := auth.NewUserService(authRepository, v)
+	authApi := auth.NewApiHandler(logger, authService)
 
 	subforumRepository := subforum.NewRepository(db)
 	subforumService := subforum.NewService(subforumRepository, v, cld)
@@ -253,9 +253,9 @@ func main() {
 		},
 	}))
 
-	public.POST("/signup", userApi.Register)
-	public.POST("/signin", userApi.Login)
-	protected.GET("/refresh", userApi.RefreshToken)
+	public.POST("/signup", authApi.Register)
+	public.POST("/signin", authApi.Login)
+	protected.GET("/refresh", authApi.RefreshToken)
 	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	public.GET("/subforums", subforumApi.GetAll)
 	protected.POST("/posts", postApi.Create)
