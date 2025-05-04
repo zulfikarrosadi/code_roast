@@ -2,6 +2,7 @@ package subforum
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -19,6 +20,7 @@ type repository interface {
 	create(context.Context, Subforum) (Subforum, error)
 	findByName(context.Context, string) ([]Subforum, error)
 	deleteById(context.Context, string, string) error
+	findAll(context.Context) ([]Subforum, error)
 }
 
 type ServiceImpl struct {
@@ -32,7 +34,7 @@ type SubforumMedia struct {
 	Banner string `json:"banner"`
 }
 
-type subforumDetail struct {
+type subforumDetailDTO struct {
 	Id            string `json:"id"`
 	Name          string `json:"name"`
 	Description   string `json:"description"`
@@ -40,8 +42,12 @@ type subforumDetail struct {
 	SubforumMedia `json:"media"`
 }
 
-type subforumResponse struct {
-	Subforum subforumDetail `json:"subforum"`
+type createResponse struct {
+	Subforum subforumDetailDTO `json:"subforum"`
+}
+
+type getAllResponse struct {
+	Subforums []subforumDetailDTO `json:"subforums"`
 }
 
 func NewService(repo repository, v *validator.Validate, cloudinaryInstance *cloudinary.Cloudinary) *ServiceImpl {
@@ -52,11 +58,11 @@ func NewService(repo repository, v *validator.Validate, cloudinaryInstance *clou
 	}
 }
 
-func (service *ServiceImpl) create(ctx context.Context, data subforumCreateRequest) (schema.Response[subforumResponse], error) {
+func (service *ServiceImpl) create(ctx context.Context, data subforumCreateRequest) (schema.Response[createResponse], error) {
 	err := service.v.Struct(data)
 	if err != nil {
 		validatorError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusBadRequest,
 			Error: schema.Error{
@@ -68,7 +74,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 
 	iconSrc, err := data.Icon.Open()
 	if err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -78,7 +84,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 	}
 	defer iconSrc.Close()
 	if _, err := imagehelper.IsImage(iconSrc); err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusBadRequest,
 			Error: schema.Error{
@@ -95,7 +101,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		},
 	)
 	if err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -105,7 +111,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 	}
 	bannerSrc, err := data.Banner.Open()
 	if err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -115,7 +121,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 	}
 	defer bannerSrc.Close()
 	if _, err := imagehelper.IsImage(bannerSrc); err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusBadRequest,
 			Error: schema.Error{
@@ -132,7 +138,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		},
 	)
 	if err != nil {
-		return schema.Response[subforumResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -145,7 +151,7 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 
 	subForumId, err := uuid.NewV7()
 	if err != nil {
-		return schema.Response[subforumResponse]{}, fmt.Errorf("service: fail to generate subforum uuid v7 %w", err)
+		return schema.Response[createResponse]{}, fmt.Errorf("service: fail to generate subforum uuid v7 %w", err)
 	}
 
 	result, err := service.repo.create(ctx, Subforum{
@@ -158,14 +164,14 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 		CreatedAt:   time.Now().Unix(),
 	})
 	if err != nil {
-		return schema.Response[subforumResponse]{}, err
+		return schema.Response[createResponse]{}, err
 	}
 
-	return schema.Response[subforumResponse]{
+	return schema.Response[createResponse]{
 		Status: "success",
 		Code:   http.StatusCreated,
-		Data: subforumResponse{
-			Subforum: subforumDetail{
+		Data: createResponse{
+			Subforum: subforumDetailDTO{
 				Id:          result.Id,
 				Name:        result.Name,
 				Description: result.Description,
@@ -175,6 +181,50 @@ func (service *ServiceImpl) create(ctx context.Context, data subforumCreateReque
 					Banner: bannerSecureUrl,
 				},
 			},
+		},
+	}, nil
+}
+
+func (service *ServiceImpl) getAll(ctx context.Context) (schema.Response[getAllResponse], error) {
+	result, err := service.repo.findAll(ctx)
+	if err != nil {
+		return schema.Response[getAllResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "Something went wrong, please try again later",
+			},
+		}, fmt.Errorf("service error: %w", err)
+	}
+	if len(result) == 0 {
+		return schema.Response[getAllResponse]{
+			Status: "fail",
+			Code:   http.StatusNotFound,
+			Error: schema.Error{
+				Message: "No subforums found",
+			},
+		}, errors.New("no subforum found")
+	}
+
+	subforumsDetail := []subforumDetailDTO{}
+	for _, v := range result {
+		subforumDetail := subforumDetailDTO{
+			Id:          v.Id,
+			Name:        v.Name,
+			Description: v.Description,
+			CreatedAt:   v.CreatedAt,
+			SubforumMedia: SubforumMedia{
+				Icon:   v.Icon,
+				Banner: v.Banner,
+			},
+		}
+		subforumsDetail = append(subforumsDetail, subforumDetail)
+	}
+	return schema.Response[getAllResponse]{
+		Status: "success",
+		Code:   200,
+		Data: getAllResponse{
+			Subforums: subforumsDetail,
 		},
 	}, nil
 }

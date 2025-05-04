@@ -61,6 +61,8 @@ This is the backend API for the "Code Roast" forum/community, built using Go and
     docker-compose up -d --build
     ```
 
+4. Run `go run cmd/code_wares/main.go -migrate=up` to apply the latest db schema
+
 ### API Endpoints
 
 (Document all your API endpoints here with details about request methods, parameters, request bodies, and response formats.  Use a tool like Swagger or OpenAPI for more comprehensive API documentation.)

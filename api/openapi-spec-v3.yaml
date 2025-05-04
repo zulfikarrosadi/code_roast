@@ -1,0 +1,902 @@
+openapi: 3.0.3
+info:
+  title: Code Roast API
+  version: 1.0.0
+  description: Code Roast web api service
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development Server
+  - url: https://coderoast-api.vercel.app
+    description: Production Server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  headers:
+    RefreshToken:
+      description: refresh token header
+      schema:
+        type: string
+        example: refresh_token='eyjsasdapfewmo.kfsdopwkf.sodkokefeo'; Path=/api/v1/refresh; Secure; HttpOnly; Max-Age=604800
+  schemas:
+    ServerError:
+      type: object
+      properties:
+        status:
+          example: fail
+        code:
+          example: 500
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: something went wrong, please try again later
+    AuthSuccess:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        code:
+          type: number
+          example: 200
+        data:
+          type: object
+          properties:
+            users:
+              type: object
+              properties:
+                id:
+                  type: number
+                  format: uuid
+                  example: '123-123-123-123-123'
+                fullname:
+                  type: string
+                  example: Jhon Doe
+                email:
+                  type: string
+                  example: email@testing.com
+            access_token:
+              type: string
+              example: 'eyjofkwmcpwke.sodfkokef.asdew'
+            refresh_token:
+              type: string
+              example: 'eyjofkwmcpwke.sodfkokef.asdko'
+    NotFound:
+      $ref: "#/components/schemas/BadRequest"
+    BadRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          example: fail
+        code:
+          type: string
+          example: 400
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: bad request
+            details:
+              type: object
+              additionalProperties: true
+  responses:
+    AuthSuccess:
+      description: auth success response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AuthSuccess"
+    BadRequest:
+      description: caused by input user is invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BadRequest"
+    ServerError:
+      description: server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ServerError"
+
+paths:
+  /signup:
+    post:
+      summary: Register
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              bad request:
+                value:
+                  fullname: ''
+                  email: ''
+                  password: ''
+                  password_confirmation: ''
+              success:
+                value:
+                  fullname: John Doe
+                  email: email@example.com
+                  password: strongest password
+                  password_confirmation: strongest password
+            schema:
+              properties:
+                fullname:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+      responses:
+        "201":
+          description: "successfully Register"
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                bad request:
+                  summary: something bad happen
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: user already exists
+                validation error:
+                  summary: User input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        email: invalid email format
+                        fullname: fullname is required
+                        password: password and password confirmation not match
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+                          password_confirmation:
+                            type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+  /signin:
+    post:
+      summary: Sign In
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: User successfully authenticated
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                bad request:
+                  summary: something bad happen
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: email or password is incorrect
+                validation error:
+                  summary: User input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        email: email is required
+                        password: password is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+  /refresh:
+    get:
+      summary: Refresh Token
+      tags:
+        - Auth
+      parameters:
+        - in: header
+          name: Cookie
+          description: Refresh token saved in cookie
+          schema:
+            type: string
+            example: refresh_token='eyjsasdapfewmo.kfsdopwkf.sodkokefeo'; Path=/api/v1/refresh; Secure; HttpOnly; Max-Age=604800
+      responses:
+        200:
+          description: Token refreshed
+          content:
+             application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccess"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/RefreshToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                refresh token not found:
+                  summary: refresh token not found in cookie or database
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: refresh token lookup not found
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+        "500":
+          description: Server error
+          content:
+            application/json:
+              examples:
+                token generation failed:
+                  summary: refresh token found, but access token generation failed
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, generate new access token fail, please try again later
+                general error:
+                  summary: server error, need to report to system admin
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, please try again later
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          fullname:
+                            type: string
+                          email:
+                            type: string
+                          password:
+                            type: string
+  /posts/{id}/likes:
+    post:
+      summary: Create new like
+      tags:
+        - Post
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          description: post id
+          schema:
+            type: string
+            format: uuid
+          required: true
+      responses:
+        "201":
+          description: successfully create a like
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: number
+                          like_count:
+                            type: number
+        "400":
+          description: caused by invalid user input
+          content:
+            application/json:
+              examples:
+                validation error:
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        id: id is required
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /posts:
+    get:
+      summary: Get all post
+      tags:
+        - Post
+      responses:
+        "200":
+          description: "successfully get all post"
+          content:
+            application/json:
+              example:
+                status: success
+                code: 200
+                data:
+                  posts:
+                    - id: '123-123-123-123-123'
+                      caption: 'The best post ever'
+                      media:
+                        - 'https://path/to-media.jpg'
+                        - 'https://path/to-media.png'
+                      user:
+                        id: '123-123-123-123-123'
+                        fullname: 'Jhon'
+                      subforum:
+                        id: '123-123-123-123-123.jpg'
+                        name: 'Roasting abies'
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      posts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            caption:
+                              type: string
+                            media:
+                              type: array
+                              items:
+                                type: string
+                            created_at:
+                              type: number
+                            updated_at:
+                              type: number
+                            subforum:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                name:
+                                  type: string
+                            user:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                fullname:
+                                  type: string
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      summary: Create new post
+      tags:
+        - Post
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data::
+            schema:
+              type: object
+              properties:
+                caption:
+                  type: string
+                  example: 'The best post ever'
+                subforumId:
+                  type: string
+                  format: uuid
+                  example: '123-123-123-123-123'
+                media:
+                  type: string
+                  format: binary
+                  maxItems: 10
+      responses:
+        "201":
+          description: "post created successfully"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          caption:
+                            type: string
+                            example: 'The best caption ever'
+                          created_at:
+                            type: number
+                            example: 1732372893829
+                          updated_at:
+                            type: number
+                            example: 0
+                          subforum:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                format: uuid
+                                example: '123-123-123-123-123'
+                              name:
+                                type: string
+                                example: Best of PHP
+                          user:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                format: uuid
+                                example: '123-123-123-123-123'
+                              fullname:
+                                type: string
+                                example: 'Jhon doe'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                unsupported media format:
+                  description: happen because media isn't jpg or png
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: fail to create new post, unsupported media file type. Only upload jpg or png file
+                validation error:
+                  description: happen because user input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        caption: caption is required
+                        subforumId: subforum Id is required
+                        media: media is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          caption:
+                            type: string
+                          subforumId:
+                            type: string
+                          media:
+                            type: string
+        "500":
+          description: caused by server error or third party service error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerError"
+              examples:
+                generic error:
+                  description: when this happened, contact the administrator and try again later
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, please try again later
+                failed to open media file:
+                  description: happen because file is corrupt
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: fail to create new post, failed to open media file
+                failed to upload media to cloudinary:
+                  description: happen because cloudinary have a bad day
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: fail to create new post, failed to upload media file
+  /subforums:
+    get:
+      tags:
+        - Subforum
+      summary: Get all subforum
+      responses:
+        "200":
+          description: successfully get all subforum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      subforums:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            description:
+                              type: string
+                            created_at:
+                              type: number
+                            media:
+                              type: object
+                              properties:
+                                icon:
+                                  type: string
+                                banner:
+                                  type: string
+    post:
+      summary: Create new subforum
+      security:
+        - bearerAuth: []
+      tags:
+        - Subforum
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                icon:
+                  type: string
+                  format: binary
+                banner:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: successfully create new subforum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      subforum:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          name:
+                            type: string
+                            example: 'Programmer'
+                          description:
+                            type: string
+                            example: This is some description
+                          created_at:
+                            type: number
+                            example: 177748237489781
+                          media:
+                            type: object
+                            properties:
+                              icon:
+                                type: string
+                                example: 'www.path-to-icon.com/icon.jpg'
+                              banner:
+                                type: string
+                                example: 'www.path-to-banner.com/banner.jpg'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                unsupported file format:
+                  description: unsupported file format for icon or banner
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: fail to create new subforum, unsupported icon file type. Only upload jpg or png file
+                validation error:
+                  description: validation error
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        name: name is required
+                        description: description is required
+                        icon: icon is required
+                        banner: banner is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+  /moderators:
+    post:
+      summary: add roles to user
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                role_id:
+                  type: array
+                  items:
+                    type: number
+      responses:
+        "201":
+          description: successfully add role to member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          roles:
+                            type: array
+                            items:
+                              type: number
+                              example:
+                                - 1
+                                  2
+                                  3
+        "400":
+          description: bad request
+          content:
+            application/json:
+              examples:
+                already have the role:
+                  description: the user already have the role
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: This user already have that role
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /moderators/posts/{postId}/status:
+    post:
+      summary: take down the post
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: successfully take down the post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: succes
+                  code:
+                    type: number
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          updated_at:
+                            type: number
+                            example: 1778172837121
+        "404":
+          description: post id not found
+          content:
+            application/json:
+              examples:
+                post id not found:
+                  value:
+                    status: fail
+                    code: 404
+                    error:
+                      message: failed to take down post, post id not found
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"

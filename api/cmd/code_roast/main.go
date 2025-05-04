@@ -4,15 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/go-playground/validator/v10"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/mysql"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/joho/godotenv"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -38,6 +44,8 @@ const (
 	CLOUDINARY_API_KEY    = "CLOUDINARY_API_KEY"
 	CLOUDINARY_API_SECRET = "CLOUDINARY_API_SECRET"
 	CLOUDINARY_CLOUD_NAME = "dxz9dwknn"
+	MIGRATION_UP          = "up"
+	MIGRATION_DOWN        = "down"
 )
 
 func loadEnv() {
@@ -47,7 +55,11 @@ func loadEnv() {
 	if os.Getenv("environment") == "production" {
 		return
 	}
-	err := godotenv.Load("../../config/.env")
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	err = godotenv.Load(filepath.Join(wd, "../../config/.env"))
 	if err != nil {
 		panic(err)
 	}
@@ -62,6 +74,54 @@ func main() {
 	db := OpenDBConnection(logger)
 	if db == nil {
 		panic("db connection fail to open")
+	}
+
+	var migrationStatus string
+	var migrationName string
+
+	flag.StringVar(&migrationStatus, "migrate", "", "Run migration file, value: up/down")
+	flag.StringVar(&migrationName, "migrate:create", "", "Create migration file, value: your_migration_name")
+
+	flag.Parse()
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	migrationSrc := "file://" + filepath.Join(wd, "../../migrations")
+	driver, err := mysql.WithInstance(db, &mysql.Config{})
+	if err != nil {
+		log.Fatalf("failed to get db instance %v", err)
+	}
+	m, err := migrate.NewWithDatabaseInstance(migrationSrc, "mysql", driver)
+	if err != nil {
+		log.Fatalf("failed to make migration instance %v", err)
+	}
+
+	if migrationStatus == MIGRATION_UP {
+		err = m.Up()
+		if err != nil {
+			log.Fatalf("failed to up the migration %v", err)
+		}
+		return
+	} else if migrationStatus == MIGRATION_DOWN {
+		err = m.Down()
+		if err != nil {
+			log.Fatalf("failed to down the migration %v", err)
+		}
+		return
+	} else {
+		log.Println("no migration run")
+	}
+
+	if len(migrationName) != 0 {
+		log.Println("creating migration...")
+		err = createMigrationFile(migrationName)
+		if err != nil {
+			log.Fatalf("failed to create new migration %v", err)
+		}
+		return
+	} else {
+		log.Println("no create migration request")
 	}
 
 	e.Use(middleware.RequestID())
@@ -117,27 +177,9 @@ func main() {
 		},
 	}))
 	e.Use(middleware.Secure())
-	e.Use(echojwt.WithConfig(echojwt.Config{
-		SigningKey:    []byte(os.Getenv("JWT_SECRETS")),
-		SigningMethod: echojwt.AlgorithmHS256,
-		Skipper: func(c echo.Context) bool {
-			fmt.Println(c.Path())
-			if c.Path() == "/api/v1/signin" || c.Path() == "/api/v1/signup" || c.Path() == "/api/v1/refresh" {
-				return true
-			}
-			return false
-		},
-		NewClaimsFunc: func(c echo.Context) jwt.Claims {
-			return &auth.CustomJWTClaims{}
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			if errors.Is(err, jwt.ErrTokenExpired) {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
-			} else if errors.Is(err, jwt.ErrTokenMalformed) {
-				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
-			}
-			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
-		},
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowCredentials: true,
 	}))
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		if c.Response().Committed {
@@ -180,9 +222,9 @@ func main() {
 		panic("cloudnary fail to initiate")
 	}
 	v := validator.New()
-	userRepository := auth.NewUserRepository(logger, db)
-	userService := auth.NewUserService(userRepository, v)
-	userApi := auth.NewApiHandler(logger, userService)
+	authRepository := auth.NewUserRepository(logger, db)
+	authService := auth.NewUserService(authRepository, v)
+	authApi := auth.NewApiHandler(logger, authService)
 
 	subforumRepository := subforum.NewRepository(db)
 	subforumService := subforum.NewService(subforumRepository, v, cld)
@@ -196,15 +238,41 @@ func main() {
 	moderatorService := moderator.NewService(moderatorRepository, v)
 	moderatorApi := moderator.NewApi(moderatorService, logger)
 
-	r := e.Group("/api/v1")
-	r.POST("/signup", userApi.Register)
-	r.POST("/signin", userApi.Login)
-	r.GET("/refresh", userApi.RefreshToken)
-	r.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
-	r.POST("/posts", postApi.Create)
-	r.POST("/posts/:id/likes", postApi.Like)
-	r.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
-	r.POST("/moderators", moderatorApi.AddRoles)
+	userRepository := user.NewRepository(db)
+	userService := user.NewService(userRepository)
+	userApi := user.NewApiHandler(userService)
+
+	protected := e.Group("/api/v1")
+	public := e.Group("/api/v1")
+
+	protected.Use(echojwt.WithConfig(echojwt.Config{
+		SigningKey:    []byte(os.Getenv("JWT_SECRETS")),
+		SigningMethod: echojwt.AlgorithmHS256,
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return &auth.CustomJWTClaims{}
+		},
+		ErrorHandler: func(c echo.Context, err error) error {
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
+			} else if errors.Is(err, jwt.ErrTokenMalformed) {
+				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
+			}
+			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
+		},
+	}))
+
+	public.POST("/signup", authApi.Register)
+	public.POST("/signin", authApi.Login)
+	public.GET("/refresh", authApi.RefreshToken)
+	protected.GET("/users", authApi.Current)
+	protected.GET("/users/:id", userApi.FindById)
+	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
+	public.GET("/subforums", subforumApi.GetAll)
+	protected.POST("/posts", postApi.Create)
+	public.GET("/posts", postApi.GetAll)
+	protected.POST("/posts/:id/likes", postApi.Like)
+	protected.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
+	protected.POST("/moderators", moderatorApi.AddRoles)
 
 	e.Start("localhost:3000")
 }
@@ -240,4 +308,43 @@ func OpenDBConnection(logger *slog.Logger) *sql.DB {
 		return nil
 	}
 	return db
+}
+
+func createMigrationFile(name string) error {
+	if name == "" {
+		return errors.New("migration name shouldn't be empty")
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory %w", err)
+	}
+
+	migrationDir := filepath.Join(wd, "../../migrations")
+	files, err := os.ReadDir(migrationDir)
+	if err != nil {
+		return fmt.Errorf("failed to read migrations directory %w", err)
+	}
+	latestVersion := 0
+	for _, v := range files {
+		version := 0
+		_, err := fmt.Sscanf(v.Name(), "%d", &version)
+		if err != nil {
+			return fmt.Errorf("failed to get migrations file name %w", err)
+		}
+		if version > latestVersion {
+			latestVersion = version
+		}
+	}
+
+	newVersion := latestVersion + 1
+	upFile := filepath.Join(wd, "../../migrations/"+fmt.Sprintf("%04d_%s.up.sql", newVersion, name))
+	downFile := filepath.Join(wd, "../../migrations/"+fmt.Sprintf("%04d_%s.down.sql", newVersion, name))
+
+	if err = os.WriteFile(upFile, []byte("-- write your up migration here --"), 0644); err != nil {
+		return fmt.Errorf("failed to create up migration file %w", err)
+	}
+	if err = os.WriteFile(downFile, []byte("-- write your down migration here --"), 0644); err != nil {
+		return fmt.Errorf("failed to create up migration file %w", err)
+	}
+	return nil
 }

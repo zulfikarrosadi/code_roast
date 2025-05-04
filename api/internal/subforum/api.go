@@ -15,7 +15,8 @@ import (
 )
 
 type service interface {
-	create(context.Context, subforumCreateRequest) (schema.Response[subforumResponse], error)
+	create(context.Context, subforumCreateRequest) (schema.Response[createResponse], error)
+	getAll(context.Context) (schema.Response[getAllResponse], error)
 }
 
 type ApiImpl struct {
@@ -152,5 +153,32 @@ func (api *ApiImpl) Create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 
+	return nil
+}
+
+func (api *ApiImpl) GetAll(c echo.Context) error {
+	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	result, err := api.service.getAll(ctx)
+	if err != nil {
+		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
+			slog.Int("status", http.StatusBadRequest),
+			slog.Group("request",
+				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
+				slog.String("method", c.Request().Method),
+				slog.String("path", c.Request().URL.Path),
+				slog.String("user_agent", c.Request().UserAgent()),
+				slog.String("ip", c.Request().RemoteAddr),
+				slog.Any("authorization", c.Request().Header.Get("Authorization")),
+			),
+			slog.String("error", err.Error()),
+			slog.String("trace", string(debug.Stack())),
+		)
+		if err := c.JSON(result.Code, result); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
+		}
+	}
+	if err := c.JSON(result.Code, result); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
+	}
 	return nil
 }

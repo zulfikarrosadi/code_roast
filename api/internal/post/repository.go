@@ -49,8 +49,14 @@ type newPost struct {
 	subforum  subforum.Subforum
 }
 
-type createPostResult struct {
-	post newPost
+type getAllPost struct {
+	id        string
+	caption   string
+	mediaUrl  []string
+	createdAt int64
+	updatedAt sql.NullInt64
+	user      user.User
+	subforum  subforum.Subforum
 }
 
 const (
@@ -62,7 +68,7 @@ const (
 func (repo *RepositoryImpl) create(
 	ctx context.Context,
 	data post,
-) (createPostResult, error) {
+) (newPost, error) {
 	postMediaValue := []string{}
 	postMediaArgs := []interface{}{}
 	var insertPostMediaQuery string
@@ -77,7 +83,7 @@ func (repo *RepositoryImpl) create(
 
 	tx, err := repo.DB.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: failed to begin transaction %w", err)
+		return newPost{}, fmt.Errorf("repository: failed to begin transaction %w", err)
 	}
 	defer func() {
 		if p := recover(); p != nil {
@@ -94,7 +100,7 @@ func (repo *RepositoryImpl) create(
 		data.id, data.caption, data.createdAt, data.userId, data.subforumId,
 	)
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: fail to create new posts %w", err)
+		return newPost{}, fmt.Errorf("repository: fail to create new posts %w", err)
 	}
 	if len(data.postMedia) > 0 {
 		_, err = tx.ExecContext(
@@ -103,7 +109,7 @@ func (repo *RepositoryImpl) create(
 			postMediaArgs...,
 		)
 		if err != nil {
-			return createPostResult{}, fmt.Errorf("repository: fail to add post media %w", err)
+			return newPost{}, fmt.Errorf("repository: fail to add post media %w", err)
 		}
 	}
 
@@ -122,7 +128,7 @@ func (repo *RepositoryImpl) create(
 		data.id,
 	)
 	if err != nil {
-		return createPostResult{}, err
+		return newPost{}, err
 	}
 	defer rows.Close()
 
@@ -141,7 +147,7 @@ func (repo *RepositoryImpl) create(
 			&np.subforum.Id,
 			&np.subforum.Name,
 		); err != nil {
-			return createPostResult{}, err
+			return newPost{}, err
 		}
 		if mediaURL.Valid {
 			mediaURLs = append(mediaURLs, mediaURL.String)
@@ -151,23 +157,21 @@ func (repo *RepositoryImpl) create(
 
 	err = tx.Commit()
 	if err != nil {
-		return createPostResult{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
+		return newPost{}, fmt.Errorf("repository: fail to create new post. transaction fail to commit %w", err)
 	}
 
-	return createPostResult{
-		post: newPost{
-			id:        data.id,
-			caption:   data.caption,
-			mediaUrl:  np.mediaUrl,
-			createdAt: data.createdAt,
-			user: user.User{
-				Id:       np.user.Id,
-				Fullname: np.user.Fullname,
-			},
-			subforum: subforum.Subforum{
-				Id:   np.subforum.Id,
-				Name: np.subforum.Name,
-			},
+	return newPost{
+		id:        data.id,
+		caption:   data.caption,
+		mediaUrl:  np.mediaUrl,
+		createdAt: data.createdAt,
+		user: user.User{
+			Id:       np.user.Id,
+			Fullname: np.user.Fullname,
+		},
+		subforum: subforum.Subforum{
+			Id:   np.subforum.Id,
+			Name: np.subforum.Name,
 		},
 	}, nil
 }
@@ -186,7 +190,7 @@ func (repo *RepositoryImpl) takeDown(ctx context.Context, postId string, updated
 		return fmt.Errorf("repository: failed to get rows affected")
 	}
 	if rowsAffected == 0 {
-		return apperror.New(http.StatusBadRequest, "failed to take down post, post id not found", err)
+		return apperror.New(http.StatusNotFound, "failed to take down post, post id not found", err)
 	}
 	return nil
 }
@@ -243,4 +247,71 @@ func (repo *RepositoryImpl) like(
 	}
 	fmt.Println(*likeCount)
 	return likeCount.count, nil
+}
+
+func (repo *RepositoryImpl) findAll(ctx context.Context) ([]getAllPost, error) {
+	rows, err := repo.DB.QueryContext(
+		ctx,
+		`
+			SELECT
+				p.id, p.caption, p.created_at, p.updated_at,
+				pm.media_url,
+				u.id AS user_id, u.fullname,
+				sf.id AS subforum_id, sf.name AS subforum_name
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
+			JOIN subforums sf ON p.subforum_id = sf.id
+			LEFT JOIN post_media pm ON pm.post_id = p.id
+		`,
+	)
+	if err != nil {
+		return []getAllPost{}, err
+	}
+	defer rows.Close()
+
+	postMap := make(map[string]*getAllPost)
+	for rows.Next() {
+		var (
+			id           string
+			caption      string
+			updatedAt    sql.NullInt64
+			createdAt    sql.NullInt64
+			mediaUrl     sql.NullString
+			userId       string
+			userFullname string
+			subforumId   string
+			subforumName string
+		)
+		err := rows.Scan(&id, &caption, &createdAt, &updatedAt, &mediaUrl, &userId, &userFullname, &subforumId, &subforumName)
+		if err != nil {
+			return []getAllPost{}, err
+		}
+		if _, exists := postMap[id]; !exists {
+			postMap[id] = &getAllPost{
+				id:        id,
+				caption:   caption,
+				createdAt: createdAt.Int64,
+				updatedAt: updatedAt,
+				mediaUrl:  []string{},
+				user: user.User{
+					Id:       userId,
+					Fullname: userFullname,
+				},
+				subforum: subforum.Subforum{
+					Id:   subforumId,
+					Name: subforumName,
+				},
+			}
+			if mediaUrl.Valid {
+				postMap[id].mediaUrl = append(postMap[id].mediaUrl, mediaUrl.String)
+			}
+		}
+	}
+	// Convert map to slice
+	posts := make([]getAllPost, 0, len(postMap))
+	for _, p := range postMap {
+		posts = append(posts, *p)
+	}
+
+	return posts, nil
 }

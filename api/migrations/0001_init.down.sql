@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `authentication`;
+DROP TABLE IF EXISTS `subforums`;
+DROP TABLE IF EXISTS `likes`;
+DROP TABLE IF EXISTS `post_meida`;
+DROP TABLE IF EXISTS `roles`;
+DROP TABLE IF EXISTS `user_roles`;
