@@ -21,6 +21,19 @@ components:
         type: string
         example: refresh_token='eyjsasdapfewmo.kfsdopwkf.sodkokefeo'; Path=/api/v1/refresh; Secure; HttpOnly; Max-Age=604800
   schemas:
+    ServerError:
+      type: object
+      properties:
+        status:
+          example: fail
+        code:
+          example: 500
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: something went wrong, please try again later
     AuthSuccess:
       type: object
       properties:
@@ -52,6 +65,26 @@ components:
             refresh_token:
               type: string
               example: 'eyjofkwmcpwke.sodfkokef.asdko'
+    NotFound:
+      $ref: "#/components/schemas/BadRequest"
+    BadRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          example: fail
+        code:
+          type: string
+          example: 400
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: bad request
+            details:
+              type: object
+              additionalProperties: true
   responses:
     AuthSuccess:
       description: auth success response
@@ -62,34 +95,16 @@ components:
     BadRequest:
       description: caused by input user is invalid
       content:
-        status:
-          example: fail
-        code:
-          example: 400
-        error:
+        application/json:
           schema:
-            type: object
-            properties:
-              message:
-                type: string
-                example: bad request
+            $ref: "#/components/schemas/BadRequest"
     ServerError:
       description: server error
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              status:
-                example: fail
-              code:
-                example: 500
-              error:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: something went wrong, please try again later
+            $ref: "#/components/schemas/ServerError"
+
 paths:
   /signup:
     post:
@@ -347,7 +362,318 @@ paths:
                             type: string
                           password:
                             type: string
+  /posts/{id}/likes:
+    post:
+      summary: Create new like
+      tags:
+        - Post
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          description: post id
+          schema:
+            type: string
+            format: uuid
+          required: true
+      responses:
+        "201":
+          description: successfully create a like
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: number
+                          like_count:
+                            type: number
+        "400":
+          description: caused by invalid user input
+          content:
+            application/json:
+              examples:
+                validation error:
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        id: id is required
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /posts:
+    get:
+      summary: Get all post
+      tags:
+        - Post
+      responses:
+        "200":
+          description: "successfully get all post"
+          content:
+            application/json:
+              example:
+                status: success
+                code: 200
+                data:
+                  posts:
+                    - id: '123-123-123-123-123'
+                      caption: 'The best post ever'
+                      media:
+                        - 'https://path/to-media.jpg'
+                        - 'https://path/to-media.png'
+                      user:
+                        id: '123-123-123-123-123'
+                        fullname: 'Jhon'
+                      subforum:
+                        id: '123-123-123-123-123.jpg'
+                        name: 'Roasting abies'
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      posts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            caption:
+                              type: string
+                            media:
+                              type: array
+                              items:
+                                type: string
+                            created_at:
+                              type: number
+                            updated_at:
+                              type: number
+                            subforum:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                name:
+                                  type: string
+                            user:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                  format: uuid
+                                fullname:
+                                  type: string
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      summary: Create new post
+      tags:
+        - Post
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data::
+            schema:
+              type: object
+              properties:
+                caption:
+                  type: string
+                  example: 'The best post ever'
+                subforumId:
+                  type: string
+                  format: uuid
+                  example: '123-123-123-123-123'
+                media:
+                  type: string
+                  format: binary
+                  maxItems: 10
+      responses:
+        "201":
+          description: "post created successfully"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          caption:
+                            type: string
+                            example: 'The best caption ever'
+                          created_at:
+                            type: number
+                            example: 1732372893829
+                          updated_at:
+                            type: number
+                            example: 0
+                          subforum:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                format: uuid
+                                example: '123-123-123-123-123'
+                              name:
+                                type: string
+                                example: Best of PHP
+                          user:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                format: uuid
+                                example: '123-123-123-123-123'
+                              fullname:
+                                type: string
+                                example: 'Jhon doe'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              examples:
+                unsupported media format:
+                  description: happen because media isn't jpg or png
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: fail to create new post, unsupported media file type. Only upload jpg or png file
+                validation error:
+                  description: happen because user input is invalid
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: validation error
+                      details:
+                        caption: caption is required
+                        subforumId: subforum Id is required
+                        media: media is required
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        properties:
+                          caption:
+                            type: string
+                          subforumId:
+                            type: string
+                          media:
+                            type: string
+        "500":
+          description: caused by server error or third party service error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerError"
+              examples:
+                generic error:
+                  description: when this happened, contact the administrator and try again later
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: something went wrong, please try again later
+                failed to open media file:
+                  description: happen because file is corrupt
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: fail to create new post, failed to open media file
+                failed to upload media to cloudinary:
+                  description: happen because cloudinary have a bad day
+                  value:
+                    status: fail
+                    code: 500
+                    error:
+                      message: fail to create new post, failed to upload media file
   /subforums:
+    get:
+      tags:
+        - Subforum
+      summary: Get all subforum
+      responses:
+        "200":
+          description: successfully get all subforum
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  code:
+                    type: number
+                  data:
+                    type: object
+                    properties:
+                      subforums:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            description:
+                              type: string
+                            created_at:
+                              type: number
+                            media:
+                              type: object
+                              properties:
+                                icon:
+                                  type: string
+                                banner:
+                                  type: string
     post:
       summary: Create new subforum
       security:
@@ -450,3 +776,127 @@ paths:
                         type: string
         "500":
           $ref: '#/components/responses/ServerError'
+  /moderators:
+    post:
+      summary: add roles to user
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                role_id:
+                  type: array
+                  items:
+                    type: number
+      responses:
+        "201":
+          description: successfully add role to member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: number
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          roles:
+                            type: array
+                            items:
+                              type: number
+                              example:
+                                - 1
+                                  2
+                                  3
+        "400":
+          description: bad request
+          content:
+            application/json:
+              examples:
+                already have the role:
+                  description: the user already have the role
+                  value:
+                    status: fail
+                    code: 400
+                    error:
+                      message: This user already have that role
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /moderators/posts/{postId}/status:
+    post:
+      summary: take down the post
+      tags:
+        - Moderator
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: postId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: successfully take down the post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: succes
+                  code:
+                    type: number
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      post:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            example: '123-123-123-123-123'
+                          updated_at:
+                            type: number
+                            example: 1778172837121
+        "404":
+          description: post id not found
+          content:
+            application/json:
+              examples:
+                post id not found:
+                  value:
+                    status: fail
+                    code: 404
+                    error:
+                      message: failed to take down post, post id not found
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"

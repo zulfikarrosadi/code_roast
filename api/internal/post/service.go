@@ -21,9 +21,10 @@ import (
 )
 
 type repository interface {
-	create(context.Context, post) (createPostResult, error)
+	create(context.Context, post) (newPost, error)
 	takeDown(context.Context, string, sql.NullInt64) error
 	like(context.Context, newLike) (int, error)
+	findAll(context.Context) ([]getAllPost, error)
 }
 
 type serviceImpl struct {
@@ -40,14 +41,7 @@ func NewService(repo repository, v *validator.Validate, cld *cloudinary.Cloudina
 	}
 }
 
-type postCreateRequest struct {
-	userId     string
-	Caption    string                  `validate:"required"`
-	SubforumId string                  `validate:"required"`
-	Media      []*multipart.FileHeader `validate:"required,min=1,max=10"`
-}
-
-type postCreateResponse struct {
+type postDTO struct {
 	Id        string            `json:"id"`
 	Caption   string            `json:"caption"`
 	Media     []string          `json:"media"`
@@ -56,16 +50,26 @@ type postCreateResponse struct {
 	Subforum  subforum.Subforum `json:"subforum"`
 	User      user.User         `json:"user"`
 }
-
-type postResponse struct {
-	Post postCreateResponse `json:"post"`
+type createRequest struct {
+	userId     string
+	Caption    string                  `validate:"required"`
+	SubforumId string                  `validate:"required"`
+	Media      []*multipart.FileHeader `validate:"required,min=1,max=10"`
 }
 
-func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) (schema.Response[postResponse], error) {
+type createResponse struct {
+	Post postDTO `json:"post"`
+}
+
+type getAllResponse struct {
+	Posts []postDTO `json:"posts"`
+}
+
+func (service *serviceImpl) create(ctx context.Context, data createRequest) (schema.Response[createResponse], error) {
 	err := service.v.Struct(data)
 	if err != nil {
 		validationError := apperror.HandlerValidatorError(err.(validator.ValidationErrors))
-		return schema.Response[postResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusBadRequest,
 			Error: schema.Error{
@@ -76,7 +80,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 	}
 	postId, err := uuid.NewV7()
 	if err != nil {
-		return schema.Response[postResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -89,7 +93,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 	for _, item := range data.Media {
 		mediaId, err := uuid.NewV7()
 		if err != nil {
-			return schema.Response[postResponse]{
+			return schema.Response[createResponse]{
 				Status: "fail",
 				Code:   http.StatusInternalServerError,
 				Error: schema.Error{
@@ -99,7 +103,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		}
 		postMediaSrc, err := item.Open()
 		if err != nil {
-			return schema.Response[postResponse]{
+			return schema.Response[createResponse]{
 				Status: "fail",
 				Code:   http.StatusInternalServerError,
 				Error: schema.Error{
@@ -109,7 +113,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		}
 		defer postMediaSrc.Close()
 		if _, err := imagehelper.IsImage(postMediaSrc); err != nil {
-			return schema.Response[postResponse]{
+			return schema.Response[createResponse]{
 				Status: "fail",
 				Code:   http.StatusBadRequest,
 				Error: schema.Error{
@@ -125,7 +129,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 			},
 		)
 		if err != nil {
-			return schema.Response[postResponse]{
+			return schema.Response[createResponse]{
 				Status: "fail",
 				Code:   http.StatusInternalServerError,
 				Error: schema.Error{
@@ -150,7 +154,7 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 		subforumId: data.SubforumId,
 	})
 	if err != nil {
-		return schema.Response[postResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -158,35 +162,35 @@ func (service *serviceImpl) create(ctx context.Context, data postCreateRequest) 
 			},
 		}, err
 	}
-	return schema.Response[postResponse]{
+	return schema.Response[createResponse]{
 		Status: "success",
 		Code:   http.StatusCreated,
-		Data: postResponse{
-			Post: postCreateResponse{
-				Id:        result.post.id,
-				Caption:   result.post.caption,
-				Media:     result.post.mediaUrl,
-				CreatedAt: result.post.createdAt,
-				UpdatedAt: result.post.updatedAt.Int64,
+		Data: createResponse{
+			Post: postDTO{
+				Id:        result.id,
+				Caption:   result.caption,
+				Media:     result.mediaUrl,
+				CreatedAt: result.createdAt,
+				UpdatedAt: result.updatedAt.Int64,
 				Subforum: subforum.Subforum{
-					Id:   result.post.subforum.Id,
-					Name: result.post.subforum.Name,
+					Id:   result.subforum.Id,
+					Name: result.subforum.Name,
 				},
 				User: user.User{
-					Id:       result.post.user.Id,
-					Fullname: result.post.user.Fullname,
+					Id:       result.user.Id,
+					Fullname: result.user.Fullname,
 				},
 			},
 		},
 	}, nil
 }
 
-func (service *serviceImpl) takeDown(ctx context.Context, postId string, updatedAt sql.NullInt64) (schema.Response[postResponse], error) {
+func (service *serviceImpl) takeDown(ctx context.Context, postId string, updatedAt sql.NullInt64) (schema.Response[createResponse], error) {
 	err := service.repo.takeDown(ctx, postId, updatedAt)
 	if err != nil {
 		var appError *apperror.AppError
 		if errors.As(err, &appError) {
-			return schema.Response[postResponse]{
+			return schema.Response[createResponse]{
 				Status: "fail",
 				Code:   appError.Code,
 				Error: schema.Error{
@@ -194,7 +198,7 @@ func (service *serviceImpl) takeDown(ctx context.Context, postId string, updated
 				},
 			}, err
 		}
-		return schema.Response[postResponse]{
+		return schema.Response[createResponse]{
 			Status: "fail",
 			Code:   http.StatusInternalServerError,
 			Error: schema.Error{
@@ -202,11 +206,11 @@ func (service *serviceImpl) takeDown(ctx context.Context, postId string, updated
 			},
 		}, err
 	}
-	return schema.Response[postResponse]{
+	return schema.Response[createResponse]{
 		Status: "success",
 		Code:   http.StatusOK,
-		Data: postResponse{
-			Post: postCreateResponse{
+		Data: createResponse{
+			Post: postDTO{
 				Id:        postId,
 				UpdatedAt: updatedAt.Int64,
 			},
@@ -266,6 +270,41 @@ func (service *serviceImpl) like(
 				PostId:    data.PostId,
 				LikeCount: likeCount,
 			},
+		},
+	}, nil
+}
+
+func (service *serviceImpl) getAll(ctx context.Context) (schema.Response[getAllResponse], error) {
+	result, err := service.repo.findAll(ctx)
+	if err != nil {
+		return schema.Response[getAllResponse]{
+			Status: "fail",
+			Code:   http.StatusInternalServerError,
+			Error: schema.Error{
+				Message: "something went wrong, please try again later",
+			},
+		}, err
+	}
+	posts := []postDTO{}
+	for _, v := range result {
+		p := postDTO{
+			Id:        v.id,
+			Caption:   v.caption,
+			Media:     v.mediaUrl,
+			CreatedAt: v.createdAt,
+			Subforum:  v.subforum,
+			User:      v.user,
+		}
+		if v.updatedAt.Valid {
+			p.UpdatedAt = v.updatedAt.Int64
+		}
+		posts = append(posts, p)
+	}
+	return schema.Response[getAllResponse]{
+		Status: "success",
+		Code:   http.StatusOK,
+		Data: getAllResponse{
+			Posts: posts,
 		},
 	}, nil
 }

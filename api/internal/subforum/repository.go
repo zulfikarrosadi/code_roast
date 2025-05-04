@@ -13,11 +13,11 @@ type RepositoryImpl struct {
 type Subforum struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
-	Description string `json:"description"`
-	UserId      string `json:"user_id"`
-	CreatedAt   int64  `json:"created_at"`
-	Icon        string `json:"icon"`
-	Banner      string `json:"banner"`
+	Description string `json:"description,omitempty"`
+	UserId      string `json:"user_id,omitempty"`
+	CreatedAt   int64  `json:"created_at,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Banner      string `json:"banner,omitempty"`
 }
 
 func NewRepository(db *sql.DB) *RepositoryImpl {
@@ -115,4 +115,18 @@ func (repo *RepositoryImpl) findById(ctx context.Context, forumId string) (Subfo
 		return Subforum{}, fmt.Errorf("repository: failed to get subforum by id %w", err)
 	}
 	return *sf, nil
+}
+
+func (repo *RepositoryImpl) findAll(ctx context.Context) ([]Subforum, error) {
+	subforums := []Subforum{}
+	rows, err := repo.DB.QueryContext(ctx, "SELECT id, name, description, icon, banner, created_at FROM subforums LIMIT 100")
+	if err != nil {
+		return subforums, err
+	}
+	for rows.Next() {
+		subforum := Subforum{}
+		rows.Scan(&subforum.Id, &subforum.Name, &subforum.Description, &subforum.Icon, &subforum.Banner, &subforum.CreatedAt)
+		subforums = append(subforums, subforum)
+	}
+	return subforums, nil
 }

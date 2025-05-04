@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+	"github.com/zulfikarrosadi/code_roast/internal/user"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
@@ -49,6 +50,30 @@ const (
 	REQUEST_ID_KEY     = "REQUEST_ID"
 	REFRESH_TOKEN_NAME = "refresh_token"
 )
+
+func (api *ApiHandler) Current(c echo.Context) error {
+	result, err := GetUserFromContext(c)
+	if err != nil {
+		return err
+	}
+	response := schema.Response[user.FindByIdResponse]{
+		Status: "success",
+		Code:   http.StatusOK,
+		Data: user.FindByIdResponse{
+			User: user.UserDTO{
+				Id:       result.Id,
+				Fullname: result.Fullname,
+				Email:    result.Email,
+			},
+		},
+	}
+
+	err = c.JSON(response.Code, response)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
+	}
+	return nil
+}
 
 func (api *ApiHandler) RefreshToken(c echo.Context) error {
 	refreshToken, err := c.Request().Cookie(REFRESH_TOKEN_NAME)
@@ -94,6 +119,7 @@ func (api *ApiHandler) RefreshToken(c echo.Context) error {
 		MaxAge:   WEEK_IN_SECOND,
 		Path:     "/api/v1/refresh",
 		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
 	})
 	if err := c.JSON(response.Code, response); err != nil {
 		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
@@ -200,6 +226,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 		MaxAge:   WEEK_IN_SECOND,
 		Path:     "/api/v1/refresh",
 		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
 	})
 	err = c.JSON(response.Code, response)
 	if err != nil {
@@ -299,6 +326,7 @@ func (api *ApiHandler) Register(c echo.Context) error {
 		MaxAge:   WEEK_IN_SECOND,
 		Path:     "/api/v1/refresh",
 		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
 	})
 	err = c.JSON(response.Code, response)
 	if err != nil {
