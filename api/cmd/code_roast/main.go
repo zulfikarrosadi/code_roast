@@ -238,6 +238,10 @@ func main() {
 	moderatorService := moderator.NewService(moderatorRepository, v)
 	moderatorApi := moderator.NewApi(moderatorService, logger)
 
+	userRepository := user.NewRepository(db)
+	userService := user.NewService(userRepository)
+	userApi := user.NewApiHandler(userService)
+
 	protected := e.Group("/api/v1")
 	public := e.Group("/api/v1")
 
@@ -259,7 +263,9 @@ func main() {
 
 	public.POST("/signup", authApi.Register)
 	public.POST("/signin", authApi.Login)
-	protected.GET("/refresh", authApi.RefreshToken)
+	public.GET("/refresh", authApi.RefreshToken)
+	protected.GET("/users", authApi.Current)
+	protected.GET("/users/:id", userApi.FindById)
 	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
 	public.GET("/subforums", subforumApi.GetAll)
 	protected.POST("/posts", postApi.Create)
