@@ -1,25 +1,14 @@
 import type { Actions } from "./$types";
 import { PUBLIC_API_BASE_URL } from "$env/static/public";
 import { fail, isRedirect, redirect } from "@sveltejs/kit";
-import type { Response } from "$lib/response-schema";
-
-type AuthErrorDetails = {
-  email: string;
-  password: string;
-  fullname: string;
-};
-type AuthResponse = {
-  user: {
-    id: string;
-    fullname: string;
-    email: string;
-  };
-  access_token: string;
-  refresh_token: string;
-};
+import type { Response } from "$lib/schemas/api-response";
+import type {
+  AuthErrorDetails,
+  AuthResponse,
+} from "$lib/schemas/auth-response";
 
 export const actions: Actions = {
-  register: async ({ request, fetch, cookies, locals }) => {
+  register: async ({ request, fetch, cookies }) => {
     const data = await request.formData();
     const fullname = data.get("name");
     const email = data.get("email");
@@ -45,7 +34,7 @@ export const actions: Actions = {
       >;
       if (result.status === "fail") {
         return fail(res.status, {
-        success:false,
+          success: false,
           message: result.error.message,
           details: {
             email: result.error.details?.email,
@@ -72,13 +61,13 @@ export const actions: Actions = {
         secure: true,
         sameSite: "strict",
       });
-      return redirect(303, '/')
+      return redirect(303, "/");
     } catch (error) {
       if (isRedirect(error)) {
         throw error;
       }
       fail(500, {
-        success:false,
+        success: false,
         message: "something went wrong, please try again later",
       });
     }

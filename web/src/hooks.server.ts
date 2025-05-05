@@ -1,20 +1,9 @@
 import { PUBLIC_API_BASE_URL } from "$env/static/public";
-import type { Response } from "$lib/response-schema";
-
-type AuthErrorDetails = {
-  email: string;
-  password: string;
-  fullname: string;
-};
-type AuthResponse = {
-  user: {
-    id: string;
-    fullname: string;
-    email: string;
-  };
-  access_token: string;
-  refresh_token: string;
-};
+import type { Response } from "$lib/schemas/api-response";
+import type {
+  AuthErrorDetails,
+  AuthResponse,
+} from "$lib/schemas/auth-response";
 
 export const handle = async ({ event, resolve }) => {
   try {
@@ -34,7 +23,7 @@ export const handle = async ({ event, resolve }) => {
         fullname: user.data.user.fullname,
         id: user.data.user.id,
       };
-      return await resolve(event)
+      return await resolve(event);
     }
 
     if (response.status === 401) {
