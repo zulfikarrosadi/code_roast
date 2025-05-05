@@ -16,7 +16,7 @@ export const actions: Actions = {
     const password_confirmation = data.get("password_confirmation");
 
     try {
-      const res = await fetch(`${PUBLIC_API_BASE_URL}/api/v1/signup`, {
+      const res = await fetch(`${PUBLIC_API_BASE_URL}/signup`, {
         method: "post",
         headers: {
           "Content-Type": "application/json",
@@ -27,6 +27,7 @@ export const actions: Actions = {
           password: password?.toString(),
           password_confirmation: password_confirmation?.toString(),
         }),
+        credentials: "include",
       });
       const result = (await res.json()) as Response<
         AuthResponse,
@@ -63,6 +64,7 @@ export const actions: Actions = {
       });
       return redirect(303, "/");
     } catch (error) {
+      console.log(error);
       if (isRedirect(error)) {
         throw error;
       }
