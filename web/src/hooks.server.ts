@@ -37,6 +37,26 @@ export const handle = async ({ event, resolve }) => {
       if (retryResponse.status === "fail") {
         return await resolve(event);
       }
+
+      // we need to this because sveltekit doesn't forwarding Set-Cookie header
+      // cookie setting can only be done by event.cookies.set function
+      event.cookies.set("refresh_token", retryResponse.data.refresh_token, {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 604800, // Match API's week in seconds
+      });
+
+      // we need this so access_token can be globally available by event.cookies
+      event.cookies.set("access_token", retryResponse.data.access_token, {
+        path: "/",
+        maxAge: 3600,
+        httpOnly: false,
+        secure: true,
+        sameSite: "strict",
+      });
+
       event.locals.user = {
         email: retryResponse.data.user.email,
         fullname: retryResponse.data.user.fullname,
