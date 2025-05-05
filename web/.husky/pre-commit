@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Change to the web directory since this hook might be called from the root
+cd "$(git rev-parse --show-toplevel)/web" || exit 1
+
+# Run lint-staged
+pnpm run lint-staged
