@@ -255,7 +255,7 @@ func main() {
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				return echo.NewHTTPError(http.StatusUnauthorized, "Access token expired")
 			} else if errors.Is(err, jwt.ErrTokenMalformed) {
-				return echo.NewHTTPError(http.StatusBadRequest, "Malformed access token")
+				return echo.NewHTTPError(http.StatusUnauthorized, "Malformed access token")
 			}
 			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or missing access token")
 		},
