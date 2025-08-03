@@ -1,8 +1,32 @@
 <script lang="ts">
-  import "../app.css";
-  import { Toaster } from "$lib/components/ui/sonner/index.js";
+  import '../app.css'
+  import { Toaster } from '$lib/components/ui/sonner/index.js'
+  import { toast } from 'svelte-sonner'
+  import { goto } from '$app/navigation'
 
-  let { data, children } = $props();
+  let { data, children } = $props()
+
+  async function handleSignOut(event: Event) {
+    event.preventDefault()
+    try {
+      const res = await fetch('/signout', {
+        method: 'delete',
+        credentials: 'include',
+      })
+      const result = await res.json()
+      if (result.status === 'fail') {
+        console.log(result)
+        toast.error(result.error.message)
+        return
+      }
+      toast.success('Berhasil logout')
+      goto('/', { invalidateAll: true })
+      return
+    } catch (error: unknown) {
+      console.log('signout failed: ', error)
+      toast.error('Terjadi kesalahan, silahkan coba beberapa saat lagi')
+    }
+  }
 </script>
 
 <header class="flex h-12 w-full items-center border-b-2">
@@ -12,7 +36,12 @@
     </div>
     <div class="flex gap-4">
       {#if data.user}
-        <a href="/signout">Sign Out</a>
+        <a href="/post">Post</a>
+        <div>
+          <form action="/signout" onsubmit={(event) => handleSignOut(event)}>
+            <button class="cursor-pointer">Sign Out</button>
+          </form>
+        </div>
         <p class="font-bold">{data.user.fullname}</p>
       {:else}
         <a href="/signup">Sign Up</a>

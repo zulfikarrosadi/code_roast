@@ -1,7 +1,6 @@
 import js from '@eslint/js'
 import svelte from 'eslint-plugin-svelte'
 import tseslint from 'typescript-eslint'
-import globals from 'globals'
 import { includeIgnoreFile } from '@eslint/compat'
 import { fileURLToPath } from 'node:url'
 import eslintConfigPrettier from 'eslint-config-prettier'
@@ -16,7 +15,6 @@ export default tseslint.config(
   includeIgnoreFile(gitignorePath),
 
   js.configs.recommended,
-
   ...tseslint.configs.recommended,
 
   ...svelte.configs['flat/recommended'],
@@ -24,14 +22,24 @@ export default tseslint.config(
   eslintConfigPrettier,
 
   {
+    files: ['**/*.svelte'],
     languageOptions: {
-      globals: {
-        ...globals.browser,
-        ...globals.node,
+      parserOptions: {
+        parser: tseslint.parser,
+        project: true,
+        tsconfigRootDir: import.meta.dirname,
+        extraFileExtensions: ['.svelte'],
       },
     },
     rules: {
-      'no-undef': 'off',
+      // You can place Svelte-specific rule overrides here
+    },
+  },
+
+  // Global rules for all files
+  {
+    rules: {
+      'no-undef': 'off', // TypeScript handles undefined variables
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -41,10 +49,5 @@ export default tseslint.config(
         },
       ],
     },
-  },
-
-  {
-    files: ['**/*.ts'],
-    rules: {},
   },
 )
