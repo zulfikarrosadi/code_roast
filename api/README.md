@@ -6,12 +6,10 @@ This is the backend API for the "Code Roast" forum/community, built using Go and
 
 *   **Backend:** Go
 *   **Database:** PostgreSQL
-*   **Caching:** Redis
 *   **Authentication:** JWT (JSON Web Tokens)
-*   **Real-time Updates (Optional):** WebSockets (using `gorilla/websocket`)
 *   **CI/CD:** GitHub Actions
 *   **Deployment:** Docker, Docker Compose
-*   **Logging:** `logrus` (or `zap`) structured logging library
+*   **Logging:** `slog` structured logging library
 
 ## Features
 
@@ -55,10 +53,12 @@ This is the backend API for the "Code Roast" forum/community, built using Go and
     # ... other environment variables
     ```
 
-3.  Run the application using Docker Compose:
+3. Install `air` for hot reload
+
+3.  Run the application using `air`:
 
     ```bash
-    docker-compose up -d --build
+    air
     ```
 
 4. Run `go run cmd/code_wares/main.go -migrate=up` to apply the latest db schema

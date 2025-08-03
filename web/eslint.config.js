@@ -1,35 +1,28 @@
-import js from "@eslint/js";
-import pkg from "eslint-plugin-svelte";
-const { eslintPluginSvelteParser } = pkg;
-import { includeIgnoreFile } from "@eslint/compat";
-import sveltePlugin from "eslint-plugin-svelte";
-import globals from "globals";
-import { fileURLToPath } from "node:url";
-import * as tseslint from "typescript-eslint";
-import svelteConfig from "./svelte.config.js";
+import js from '@eslint/js'
+import svelte from 'eslint-plugin-svelte'
+import tseslint from 'typescript-eslint'
+import globals from 'globals'
+import { includeIgnoreFile } from '@eslint/compat'
+import { fileURLToPath } from 'node:url'
+import eslintConfigPrettier from 'eslint-config-prettier'
 
-const gitignorePath = fileURLToPath(new URL("./.gitignore", import.meta.url));
+const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url))
 
-// Prettier rules for ESLint
-const prettierRules = {
-  "arrow-body-style": "off",
-  "prefer-arrow-callback": "off",
-};
+export default tseslint.config(
+  {
+    ignores: ['build/', '.svelte-kit/', 'dist/'],
+  },
 
-// Create typescript-eslint config with project specific settings
-const typescript = tseslint.configs.recommended;
-
-export default [
-  // Include .gitignore
   includeIgnoreFile(gitignorePath),
 
-  // Basic JavaScript rules
   js.configs.recommended,
 
-  // TypeScript rules
-  ...typescript,
+  ...tseslint.configs.recommended,
 
-  // Standard browser and node globals
+  ...svelte.configs['flat/recommended'],
+
+  eslintConfigPrettier,
+
   {
     languageOptions: {
       globals: {
@@ -37,49 +30,21 @@ export default [
         ...globals.node,
       },
     },
-  },
-
-  // Svelte rules for .svelte files
-  {
-    files: ["**/*.svelte"],
-    plugins: {
-      svelte: sveltePlugin,
-    },
-    languageOptions: {
-      parser: eslintPluginSvelteParser,
-      parserOptions: {
-        parser: tseslint.parser,
-        extraFileExtensions: [".svelte"],
-        svelteConfig,
-      },
-    },
     rules: {
-      ...sveltePlugin.configs.recommended.rules,
-      // Turn off no-undef because TypeScript handles this
-      "no-undef": "off",
+      'no-undef': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
   },
 
-  // TypeScript files configuration
   {
-    files: ["**/*.ts", "**/*.js"],
-    ignores: ["eslint.config.js", "svelte.config.js", "node_modules/**"],
-    languageOptions: {
-      parser: tseslint.parser,
-      parserOptions: {
-        project: "./tsconfig.json",
-      },
-    },
-    rules: {
-      ...prettierRules,
-      "no-undef": "off", // TypeScript handles this
-    },
+    files: ['**/*.ts'],
+    rules: {},
   },
-
-  // Prettier compatibility
-  {
-    rules: {
-      ...prettierRules,
-    },
-  },
-];
+)

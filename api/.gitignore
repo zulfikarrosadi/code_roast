@@ -26,3 +26,4 @@ go.work.sum
 
 # http extention vscode
 .http
+tmp

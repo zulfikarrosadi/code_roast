@@ -49,17 +49,10 @@ const (
 )
 
 func loadEnv() {
-	if os.Getenv("CI") == "true" {
+	if os.Getenv("CI") == "true" || os.Getenv("environment") == "production" {
 		return
 	}
-	if os.Getenv("environment") == "production" {
-		return
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	err = godotenv.Load(filepath.Join(wd, "../../config/.env"))
+	err := godotenv.Load("config/.env")
 	if err != nil {
 		panic(err)
 	}
@@ -83,11 +76,8 @@ func main() {
 	flag.StringVar(&migrationName, "migrate:create", "", "Create migration file, value: your_migration_name")
 
 	flag.Parse()
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	migrationSrc := "file://" + filepath.Join(wd, "../../migrations")
+	migrationSrc := "file://migrations"
+
 	driver, err := mysql.WithInstance(db, &mysql.Config{})
 	if err != nil {
 		log.Fatalf("failed to get db instance %v", err)
