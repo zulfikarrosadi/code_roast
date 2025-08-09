@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"runtime/debug"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	"github.com/zulfikarrosadi/code_roast/internal/middleware"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
@@ -44,7 +44,9 @@ const (
 )
 
 func (api *ApiImpl) Create(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
+
 	token := c.Get("user").(*jwt.Token)
 	user, ok := token.Claims.(*auth.CustomJWTClaims)
 	if !ok {
@@ -57,19 +59,7 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	newSubforum.Description = c.FormValue("description")
 	subForumIcon, err := c.FormFile("icon")
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("failed to create sub forum, missing icon file", slog.String("error", err.Error()))
 		if err == http.ErrMissingFile {
 			return echo.NewHTTPError(http.StatusBadRequest, "failed to create new sub, forum. missing icon file")
 		}
@@ -77,19 +67,7 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	}
 	subForumBanner, err := c.FormFile("banner")
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("failed to create sub forum, missing banner file", slog.String("error", err.Error()))
 		if err == http.ErrMissingFile {
 			return echo.NewHTTPError(http.StatusBadRequest, "failed to create new sub, forum. missing banner file")
 		}
@@ -102,54 +80,18 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	response, err := api.service.create(c.Request().Context(), newSubforum)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
-			api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-				slog.Int("status", http.StatusInternalServerError),
-				slog.Group("request",
-					slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-					slog.String("method", c.Request().Method),
-					slog.String("path", c.Request().URL.Path),
-					slog.String("user_agent", c.Request().UserAgent()),
-					slog.String("ip", c.Request().RemoteAddr),
-					slog.Any("authorization", c.Request().Header.Get("Authorization")),
-				),
-				slog.String("error", err.Error()),
-				slog.String("trace", string(debug.Stack())),
-			)
+			logger.Debug("request validation fail", slog.Any("error", err))
 			if c.JSON(http.StatusBadRequest, response) != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 			}
 			return nil
 		}
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("create subforum service fail", slog.Any("error", err))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.Debug("REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 
@@ -157,27 +99,18 @@ func (api *ApiImpl) Create(c echo.Context) error {
 }
 
 func (api *ApiImpl) GetAll(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
+
 	result, err := api.service.getAll(ctx)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("get all subforum service fail", slog.Any("error", err))
 		if err := c.JSON(result.Code, result); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 		}
 	}
 	if err := c.JSON(result.Code, result); err != nil {
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 	return nil

@@ -24,6 +24,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	internalMiddleware "github.com/zulfikarrosadi/code_roast/internal/middleware"
 	"github.com/zulfikarrosadi/code_roast/internal/moderator"
 	"github.com/zulfikarrosadi/code_roast/internal/post"
 	"github.com/zulfikarrosadi/code_roast/internal/subforum"
@@ -115,6 +116,7 @@ func main() {
 	}
 
 	e.Use(middleware.RequestID())
+	e.Use(internalMiddleware.SlogContextMiddleware(logger))
 
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:    true,
@@ -128,39 +130,30 @@ func main() {
 		LogError:     true,
 		HandleError:  true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			requestDetails := slog.Group("request",
-				slog.String("id", v.RequestID),
-				slog.String("method", v.Method),
-				slog.String("path", v.URIPath),
-				slog.String("user_agent", v.UserAgent),
-				slog.String("ip", v.RemoteIP),
-				slog.Any("authorization", v.Headers),
-			)
-
 			if v.Error != nil {
 				// Differentiate user-caused errors (4xx) and server errors (5xx)
 				var echoErrorRequest *echo.HTTPError
 				if errors.As(v.Error, &echoErrorRequest) && v.Status >= 400 && v.Status < 500 {
-					logger.LogAttrs(c.Request().Context(), slog.LevelWarn, "REQUEST_ERROR",
+					slog.LogAttrs(c.Request().Context(), slog.LevelWarn, "REQUEST_ERROR",
+						slog.String("request_id", v.RequestID),
 						slog.Int("status", v.Status),
 						slog.Int("latency_ms", int(v.Latency)),
-						requestDetails,
 						slog.String("error", echoErrorRequest.Message.(string)),
 					)
 				} else {
-					logger.LogAttrs(c.Request().Context(), slog.LevelError, "REQUEST_ERROR",
+					slog.LogAttrs(c.Request().Context(), slog.LevelError, "REQUEST_ERROR",
+						slog.String("request_id", v.RequestID),
 						slog.Int("status", v.Status),
 						slog.Int("latency_ms", int(v.Latency)),
-						requestDetails,
 						slog.String("error", v.Error.Error()),
 					)
 				}
 			} else {
 				// Log successful requests as INFO
-				logger.LogAttrs(c.Request().Context(), slog.LevelInfo, "REQUEST",
+				slog.LogAttrs(c.Request().Context(), slog.LevelInfo, "REQUEST_COMPLETED",
+					slog.String("request_id", v.RequestID),
 					slog.Int("status", v.Status),
 					slog.Int("latency_ms", int(v.Latency)),
-					requestDetails,
 				)
 			}
 			return nil
@@ -232,8 +225,8 @@ func main() {
 	userService := user.NewService(userRepository)
 	userApi := user.NewApiHandler(userService)
 
-	protected := e.Group("/api/v1")
-	public := e.Group("/api/v1")
+	apiV1 := e.Group("/api/v1")
+	protected := apiV1.Group("")
 
 	protected.Use(echojwt.WithConfig(echojwt.Config{
 		SigningKey:    []byte(os.Getenv("JWT_SECRETS")),
@@ -251,15 +244,16 @@ func main() {
 		},
 	}))
 
-	public.POST("/signup", authApi.Register)
-	public.POST("/signin", authApi.Login)
-	public.GET("/refresh", authApi.RefreshToken)
+	apiV1.POST("/signup", authApi.Register)
+	apiV1.POST("/signin", authApi.Login)
+	apiV1.GET("/refresh", authApi.RefreshToken)
 	protected.GET("/users", authApi.Current)
+	protected.DELETE("/signout", authApi.LogOut)
 	protected.GET("/users/:id", userApi.FindById)
 	protected.POST("/subforums", subforumApi.Create, roles([]int{user.ROLE_ID_CREATE_SUBFORUM}))
-	public.GET("/subforums", subforumApi.GetAll)
+	apiV1.GET("/subforums", subforumApi.GetAll)
 	protected.POST("/posts", postApi.Create)
-	public.GET("/posts", postApi.GetAll)
+	apiV1.GET("/posts", postApi.GetAll)
 	protected.POST("/posts/:id/likes", postApi.Like)
 	protected.PUT("/moderators/posts/:postId/status", postApi.TakeDown, roles([]int{user.ROLE_ID_TAKE_DOWN_POST}))
 	protected.POST("/moderators", moderatorApi.AddRoles)

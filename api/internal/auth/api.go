@@ -4,12 +4,13 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
+
+	"github.com/zulfikarrosadi/code_roast/internal/middleware"
 	"github.com/zulfikarrosadi/code_roast/internal/user"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
@@ -49,6 +50,7 @@ const (
 	WEEK_IN_SECOND     = 604_800
 	REQUEST_ID_KEY     = "REQUEST_ID"
 	REFRESH_TOKEN_NAME = "refresh_token"
+	ACCESS_TOKEN_NAME  = "access_token"
 )
 
 func (api *ApiHandler) Current(c echo.Context) error {
@@ -75,41 +77,40 @@ func (api *ApiHandler) Current(c echo.Context) error {
 	return nil
 }
 
+func (api *ApiHandler) LogOut(c echo.Context) error {
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
+
+	_, err := GetUserFromContext(c)
+	if err != nil {
+		logger.Warn("get user from context fail", slog.String("error", err.Error()))
+		return err
+	}
+
+	c.SetCookie(&http.Cookie{
+		Name:     REFRESH_TOKEN_NAME,
+		Value:    "",
+		Secure:   true,
+		MaxAge:   0,
+		Path:     "/api/v1/refresh",
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+	})
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (api *ApiHandler) RefreshToken(c echo.Context) error {
 	refreshToken, err := c.Request().Cookie(REFRESH_TOKEN_NAME)
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
 
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Warn("refresh token not available in cookie", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusUnauthorized, "something went wrong, refresh token extraction from cookie fails")
 	}
 	response, err := api.refreshToken(ctx, refreshToken.Value)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("refresh token service failed", slog.String("error", err.Error()))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	c.SetCookie(&http.Cookie{
@@ -122,19 +123,7 @@ func (api *ApiHandler) RefreshToken(c echo.Context) error {
 		SameSite: http.SameSiteNoneMode,
 	})
 	if err := c.JSON(response.Code, response); err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 	return nil
@@ -142,22 +131,11 @@ func (api *ApiHandler) RefreshToken(c echo.Context) error {
 
 func (api *ApiHandler) Login(c echo.Context) error {
 	user := new(loginRequest)
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
 
 	if err := c.Bind(user); err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("failed to bind data user request", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
@@ -171,51 +149,16 @@ func (api *ApiHandler) Login(c echo.Context) error {
 	response, err := api.Service.login(ctx, *user)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
-			api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-				slog.Int("status", response.Code),
-				slog.Group("request",
-					slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-					slog.String("method", c.Request().Method),
-					slog.String("path", c.Request().URL.Path),
-					slog.String("user_agent", c.Request().UserAgent()),
-					slog.String("ip", c.Request().RemoteAddr),
-					slog.Any("authorization", c.Request().Header.Get("Authorization")),
-				),
-				slog.String("error", err.Error()),
-				slog.String("trace", string(debug.Stack())),
-			)
+			logger.Debug("request validation fail", slog.Any("error", err))
 			err = c.JSON(response.Code, response)
 			if err != nil {
-				api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-					slog.Int("status", response.Code),
-					slog.Group("request",
-						slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-						slog.String("method", c.Request().Method),
-						slog.String("path", c.Request().URL.Path),
-						slog.String("user_agent", c.Request().UserAgent()),
-						slog.String("ip", c.Request().RemoteAddr),
-						slog.Any("authorization", c.Request().Header.Get("Authorization")),
-					),
-					slog.String("error", err.Error()),
-					slog.String("trace", string(debug.Stack())),
-				)
+				logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 			}
 			return nil
 		}
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+
+		logger.Debug("login service fail", slog.Any("error", err))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 
@@ -230,19 +173,7 @@ func (api *ApiHandler) Login(c echo.Context) error {
 	})
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
@@ -253,22 +184,11 @@ func (api *ApiHandler) Login(c echo.Context) error {
 
 func (api *ApiHandler) Register(c echo.Context) error {
 	user := new(registrationRequest)
-	ctx := context.WithValue(context.TODO(), "REQUEST_ID", c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
 
 	if err := c.Bind(user); err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusBadRequest),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("failed to bind data user request", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusBadRequest,
 			"fail to process your request, send corerct data and try again",
@@ -285,38 +205,16 @@ func (api *ApiHandler) Register(c echo.Context) error {
 	})
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
+			logger.Debug("request validation fail", slog.Any("error", err))
 			err = c.JSON(response.Code, response)
 			if err != nil {
-				api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-					slog.Int("status", http.StatusInternalServerError),
-					slog.Group("request",
-						slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-						slog.String("method", c.Request().Method),
-						slog.String("path", c.Request().URL.Path),
-						slog.String("user_agent", c.Request().UserAgent()),
-						slog.String("ip", c.Request().RemoteAddr),
-						slog.Any("authorization", c.Request().Header.Get("Authorization")),
-					),
-					slog.String("error", err.Error()),
-					slog.String("trace", string(debug.Stack())),
-				)
+				logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 			}
 			return nil
 		}
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+
+		logger.Debug("register service fail", slog.String("error", err.Error()))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	c.SetCookie(&http.Cookie{
@@ -330,19 +228,7 @@ func (api *ApiHandler) Register(c echo.Context) error {
 	})
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",

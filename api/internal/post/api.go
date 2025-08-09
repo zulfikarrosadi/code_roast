@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	apperror "github.com/zulfikarrosadi/code_roast/internal/app-error"
 	"github.com/zulfikarrosadi/code_roast/internal/auth"
+	"github.com/zulfikarrosadi/code_roast/internal/middleware"
 	"github.com/zulfikarrosadi/code_roast/pkg/schema"
 )
 
@@ -41,7 +41,9 @@ var (
 )
 
 func (api *ApiImpl) Create(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
+
 	token := c.Get("user").(*jwt.Token)
 	user, ok := token.Claims.(*auth.CustomJWTClaims)
 	if !ok {
@@ -51,19 +53,7 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	newPost := createRequest{}
 	media, err := c.MultipartForm()
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", http.StatusInternalServerError),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("failed to bind data user request", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "fail to process your request, failed to open post media files")
 	}
 
@@ -74,69 +64,20 @@ func (api *ApiImpl) Create(c echo.Context) error {
 	response, err := api.service.create(ctx, newPost)
 	if err != nil {
 		if response.Error.Message == apperror.VALIDATION_ERROR {
-			api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-				slog.Int("status", response.Code),
-				slog.Group("request",
-					slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-					slog.String("method", c.Request().Method),
-					slog.String("path", c.Request().URL.Path),
-					slog.String("user_agent", c.Request().UserAgent()),
-					slog.String("ip", c.Request().RemoteAddr),
-					slog.Any("authorization", c.Request().Header.Get("Authorization")),
-				),
-				slog.String("error", err.Error()),
-				slog.String("trace", string(debug.Stack())),
-			)
-
+			logger.Debug("request validation fail", slog.Any("error", err))
 			err = c.JSON(response.Code, response)
 			if err != nil {
-				api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-					slog.Int("status", response.Code),
-					slog.Group("request",
-						slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-						slog.String("method", c.Request().Method),
-						slog.String("path", c.Request().URL.Path),
-						slog.String("user_agent", c.Request().UserAgent()),
-						slog.String("ip", c.Request().RemoteAddr),
-						slog.Any("authorization", c.Request().Header.Get("Authorization")),
-					),
-					slog.String("error", err.Error()),
-					slog.String("trace", string(debug.Stack())),
-				)
+				logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 				return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 			}
 			return nil
 		}
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("create post service fail", slog.Any("error", err))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
@@ -146,60 +87,43 @@ func (api *ApiImpl) Create(c echo.Context) error {
 }
 
 func (api *ApiImpl) Like(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
+
 	user, err := auth.GetUserFromContext(c)
 	if err != nil {
 		return echo.ErrUnauthorized
 	}
 	data := likeCreateRequest{}
 	if err = c.Bind(&data); err != nil {
+		logger.Debug("failed to bind data user request", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to like this post. Send correct information and please try again later")
 	}
 	data.UserId = user.Id
 
 	response, err := api.service.like(ctx, data)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("like post service failed", slog.String("error", err.Error()))
+		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
-	if err = c.JSON(response.Code, response); err != nil {
+	err = c.JSON(response.Code, response)
+	if err != nil {
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong, please try again later")
 	}
 	return nil
 }
 
 func (api *ApiImpl) TakeDown(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
 
 	postId := c.Param("postId")
 	response, err := api.service.takeDown(ctx, postId, sql.NullInt64{
 		Int64: time.Now().Unix(),
 	})
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("take down service fail", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
@@ -207,19 +131,7 @@ func (api *ApiImpl) TakeDown(c echo.Context) error {
 	}
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(
 			http.StatusInternalServerError,
 			"something went wrong, please try again later",
@@ -229,40 +141,17 @@ func (api *ApiImpl) TakeDown(c echo.Context) error {
 }
 
 func (api *ApiImpl) GetAll(c echo.Context) error {
-	ctx := context.WithValue(context.TODO(), REQUEST_ID_KEY, c.Response().Header().Get(echo.HeaderXRequestID))
+	ctx := c.Request().Context()
+	logger := middleware.GetLogger(ctx)
 	response, err := api.service.getAll(ctx)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Debug("get all post service fail", slog.String("error", err.Error()))
 		return echo.NewHTTPError(response.Code, response.Error.Message)
 	}
 
 	err = c.JSON(response.Code, response)
 	if err != nil {
-		api.Logger.LogAttrs(ctx, slog.LevelDebug, "REQUEST_DEBUG",
-			slog.Int("status", response.Code),
-			slog.Group("request",
-				slog.String("id", ctx.Value(REQUEST_ID_KEY).(string)),
-				slog.String("method", c.Request().Method),
-				slog.String("path", c.Request().URL.Path),
-				slog.String("user_agent", c.Request().UserAgent()),
-				slog.String("ip", c.Request().RemoteAddr),
-				slog.Any("authorization", c.Request().Header.Get("Authorization")),
-			),
-			slog.String("error", err.Error()),
-			slog.String("trace", string(debug.Stack())),
-		)
+		logger.Error("failed to write JSON response", slog.String("error", err.Error()))
 		return echo.NewHTTPError(http.StatusInternalServerError, "something went wrong please try again later")
 	}
 	return nil
