@@ -14,6 +14,10 @@
   let { form } = $props()
 </script>
 
+<svelte:head>
+  <title>Masuk ke Code Roast</title>
+</svelte:head>
+
 <div class="w-auto h-full flex items-center justify-center flex-col">
   <div class="space-y-2 p-4 w-full">
     <h1 class="text-3xl font-bold md:text-center">Code Roast</h1>
