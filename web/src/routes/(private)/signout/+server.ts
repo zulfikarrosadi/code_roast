@@ -20,6 +20,22 @@ export const DELETE: RequestHandler = async ({ fetch, cookies }) => {
       })
     }
 
+    cookies.set('refresh_token', '', {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 0,
+    })
+
+    cookies.set('access_token', '', {
+      path: '/',
+      maxAge: 0,
+      httpOnly: false,
+      secure: true,
+      sameSite: 'strict',
+    })
+
     return json({
       status: 'success',
     })
