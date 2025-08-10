@@ -1,4 +1,4 @@
-import type { LayoutServerLoad } from "./$types";
+import type { LayoutServerLoad } from './$types'
 
 export const load: LayoutServerLoad = async (event) => {
   if (event.locals && event.locals.user) {
@@ -6,12 +6,13 @@ export const load: LayoutServerLoad = async (event) => {
       user: {
         fullname: event.locals.user.fullname,
         email: event.locals.user.email,
-        id: event.locals.user.id
-      }
+        id: event.locals.user.id,
+        role: event.locals.user.role,
+      },
     }
   }
 
   return {
-    user: null
+    user: null,
   }
 }
